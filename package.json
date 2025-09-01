@@ -1,0 +1,46 @@
+{
+	"name": "@keepnet/agentic-ui",
+	"type": "module",
+	"version": "2.0.0",
+	"private": true,
+	"scripts": {
+		"build": "nuxt build",
+		"dev": "nuxt dev",
+		"generate": "nuxt generate",
+		"preview": "yarn run build && wrangler pages dev",
+		"postinstall": "nuxt prepare",
+		"deploy": "yarn run build && wrangler pages deploy",
+		"cf:reset": "rm -rf .wrangler/state && wrangler d1 migrations apply agentic-ally-db --local",
+		"cf:typegen": "wrangler types",
+		"clean": "rm -rf .nuxt .output .nitro dist .wrangler node_modules/.cache",
+		"reset": "rm -rf .nuxt .output .nitro dist .wrangler node_modules && yarn install && yarn cf:reset"
+	},
+	"dependencies": {
+		"@ai-sdk/vue": "^2.0.23",
+		"@iconify-json/logos": "^1.2.9",
+		"@iconify-json/lucide": "^1.2.64",
+		"@iconify-json/simple-icons": "^1.2.49",
+		"@nuxt/eslint": "^1.9.0",
+		"@nuxt/ui-pro": "^3.3.2",
+		"@nuxthub/core": "^0.9.0",
+		"@nuxtjs/mdc": "^0.17.2",
+		"ai": "^5.0.23",
+		"date-fns": "^4.1.0",
+		"drizzle-orm": "^0.44.5",
+		"nuxt": "^4.0.3",
+		"nuxt-auth-utils": "^0.5.23",
+		"shiki-stream": "^0.1.2",
+		"vue": "^3.5.19",
+		"vue-router": "^4.5.1",
+		"workers-ai-provider": "^0.7.5"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250823.0",
+		"nitro-cloudflare-dev": "^0.2.2",
+		"wrangler": "^4.32.0"
+	},
+	"packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+	"resolutions": {
+		"@cloudflare/unenv-preset": "latest"
+	}
+}
