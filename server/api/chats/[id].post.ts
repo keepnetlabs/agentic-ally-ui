@@ -1,4 +1,6 @@
 import { parseAIMessage } from '../../utils/text-utils'
+import { and } from 'drizzle-orm'
+import * as tables from '../../database/schema'
 
 defineRouteMeta({
   openAPI: {
@@ -40,13 +42,45 @@ export default defineEventHandler(async (event) => {
   }
 
   // Proxy the request to the Fleet Agent Worker backend
-  const response = await fetch(process.env.FLEET_AGENT_URL!, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({ model, messages })
-  })
+  console.log('FLEET_AGENT_URL', process.env.FLEET_AGENT_URL)
 
-  return response
+  try {
+    const response = await fetch(process.env.FLEET_AGENT_URL!, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ model, messages })
+    })
+
+    if (!response.ok) {
+      console.error('Fleet Agent response error:', response.status, response.statusText)
+      throw createError({
+        statusCode: response.status,
+        statusMessage: `Fleet Agent error: ${response.statusText}`
+      })
+    }
+
+    // Properly proxy the SSE stream response
+    setHeader(event, 'Content-Type', response.headers.get('content-type') || 'text/event-stream')
+    setHeader(event, 'Cache-Control', 'no-cache')
+    setHeader(event, 'Connection', 'keep-alive')
+    
+    // Copy important headers from Fleet Agent response
+    const importantHeaders = ['x-vercel-ai-ui-message-stream', 'access-control-allow-origin']
+    importantHeaders.forEach(headerName => {
+      const headerValue = response.headers.get(headerName)
+      if (headerValue) {
+        setHeader(event, headerName, headerValue)
+      }
+    })
+
+    return sendStream(event, response.body)
+  } catch (error) {
+    console.error('Fleet Agent fetch error:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to connect to Fleet Agent'
+    })
+  }
 })

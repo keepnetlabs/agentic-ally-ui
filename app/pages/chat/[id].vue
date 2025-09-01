@@ -36,10 +36,8 @@ if (!chat.value) {
   throw createError({ statusCode: 404, statusMessage: 'Chat not found', fatal: true })
 }
 
-// Local input state
 const input = ref('')
 
-// Initialize Chat with Default transport (AI SDK Data Stream)
 const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
@@ -49,21 +47,10 @@ const chatClient = new Chat({
   messages: (chat.value?.messages ?? []).map((m: any) => ({
     id: m.id,
     role: m.role,
-    parts: [{ type: 'text', text: m.content }]
+    content: m.content
   })),
   async onFinish() {
     refreshNuxtData('chats')
-    const lastMessage = chatClient.messages[chatClient.messages.length - 1]
-    const text = parseAIMessage(lastMessage)
-    if (text) {
-      await fetch(`/api/chats/${chatId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: "assistant", content: text })
-      })
-    }
   },
   onError(err: any) {
     const message = typeof err?.message === 'string' && err.message[0] === '{' ? JSON.parse(err.message).message : err?.message
@@ -76,26 +63,29 @@ const chatClient = new Chat({
   }
 })
 
-/*
-  We have two cases here: 
-  1. The chat has only one message, which is the user's prompt
-  2. The chat has more than one message, which means the assistant has already responded
-
-  In the first case, we need to trigger the assistant to respond.
-  In the second case, we need to use the existing messages to continue the conversation.
-*/
-
-// Adapter: map UI messages to the structure expected by UChatMessages
 const messages = computed(() =>
-  (chatClient.messages as any[]).map((m: any) => ({
+  chatClient.messages.map((m: any) => ({
     id: m.id,
     role: m.role,
-    content: parseAIMessage(m)
+    content: m.content || parseAIMessage(m)
   }))
 )
-
 const status = computed(() => chatClient.status)
 const error = computed(() => chatClient.error)
+
+function handleSubmit() {
+  if (!input.value || status.value === 'streaming') return
+  chatClient.sendMessage({ text: input.value })
+  input.value = ''
+}
+
+function stop() {
+  // Chat class doesn't have stop method, need to use AbortController
+}
+
+function reload() {
+  chatClient.regenerate()
+}
 
 const copied = ref(false)
 
@@ -107,15 +97,9 @@ function copy(e: MouseEvent, message: any) {
   }, 2000)
 }
 
-function onSubmit() {
-  if (!input.value || status.value === 'streaming') return
-  chatClient.sendMessage({ text: input.value })
-  input.value = ''
-}
-
 onMounted(() => {
   if (chat.value?.messages.length === 1) {
-    chatClient.regenerate()
+    reload()
   }
 })
 </script>
@@ -151,13 +135,13 @@ onMounted(() => {
           :error="error"
           variant="subtle"
           class="sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10"
-          @submit="onSubmit"
+          @submit="handleSubmit"
         >
           <UChatPromptSubmit
             :status="status"
             color="neutral"
-            @stop="() => chatClient.stop()"
-            @reload="() => chatClient.regenerate()"
+            @stop="stop"
+            @reload="reload"
           />
 
           <template #footer>

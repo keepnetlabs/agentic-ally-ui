@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx wrangler d1 create:*)",
+      "Bash(npx wrangler d1 migrations apply:*)",
+      "Bash(yarn install)",
+      "Bash(yarn build)",
+      "Bash(npx wrangler d1 list:*)",
+      "Bash(npx wrangler d1 execute:*)",
+      "Bash(npx wrangler pages deployment list:*)",
+      "Bash(npx wrangler pages deployment tail:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(find:*)",
+      "Bash(yarn add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
