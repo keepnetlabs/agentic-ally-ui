@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'Content-Type', response.headers.get('content-type') || 'text/event-stream')
     setHeader(event, 'Cache-Control', 'no-cache')
     setHeader(event, 'Connection', 'keep-alive')
-    
+
     // Copy important headers from Fleet Agent response
     const importantHeaders = ['x-vercel-ai-ui-message-stream', 'access-control-allow-origin']
     importantHeaders.forEach(headerName => {
@@ -75,7 +75,73 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-    return sendStream(event, response.body)
+    // Filter out unsupported events (e.g., workflow-* events) that the UI client does not recognize.
+    // We operate on SSE lines and drop any `data: { type: "workflow-*" }` entries.
+    const upstream = response.body as ReadableStream<Uint8Array> | null
+
+    if (!upstream) {
+      return send(event, '')
+    }
+
+    let buffer = ''
+    let skipNextBlank = false
+
+    const transform = new TransformStream<string, string>({
+      transform(chunk, controller) {
+        buffer += chunk
+        let newlineIndex = buffer.indexOf('\n')
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex + 1) // include newline
+          buffer = buffer.slice(newlineIndex + 1)
+
+          const trimmed = line.trim()
+
+          if (skipNextBlank) {
+            if (trimmed === '') {
+              // skip the separator after a dropped event
+              skipNextBlank = false
+              newlineIndex = buffer.indexOf('\n')
+              continue
+            }
+            // if not blank, clear flag and continue normal processing
+            skipNextBlank = false
+          }
+
+          if (trimmed.startsWith('data: ')) {
+            const jsonText = trimmed.slice('data: '.length)
+            try {
+              const obj = JSON.parse(jsonText)
+              if (obj && typeof obj === 'object' && typeof obj.type === 'string') {
+                if (obj.type.startsWith('workflow-')) {
+                  // drop this line and the following blank separator
+                  skipNextBlank = true
+                  newlineIndex = buffer.indexOf('\n')
+                  continue
+                }
+              }
+            } catch (_) {
+              // not json or partial line; pass through
+            }
+          }
+
+          controller.enqueue(line)
+          newlineIndex = buffer.indexOf('\n')
+        }
+      },
+      flush(controller) {
+        if (buffer.length > 0) {
+          controller.enqueue(buffer)
+          buffer = ''
+        }
+      }
+    })
+
+    const encoded = upstream
+      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(transform)
+      .pipeThrough(new TextEncoderStream())
+
+    return sendStream(event, encoded)
   } catch (error) {
     console.error('Fleet Agent fetch error:', error)
     throw createError({

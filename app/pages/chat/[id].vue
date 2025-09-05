@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import type { DefineComponent } from 'vue'
+import { ref, computed, onMounted, resolveComponent } from 'vue'
+import { useRoute } from 'vue-router'
+import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
+// @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
+import { useToast } from '#imports'
+import { useLLM } from '../../composables/useLLM'
 import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
-import ProseStreamPre from '../../components/prose/PreStream.vue'
-import { parseAIMessage } from '../../utils/text-utils'
+import { parseAIMessage, parseAIReasoning } from '../../utils/text-utils'
 
 type ServerMessage = {
   id: string
@@ -18,7 +23,7 @@ type ServerChat = {
 }
 
 const components = {
-  pre: ProseStreamPre as unknown as DefineComponent
+  pre: resolveComponent('ProseStreamPre') as unknown as DefineComponent
 }
 
 const route = useRoute()
@@ -28,7 +33,8 @@ const { model } = useLLM()
 
 const chatId = String(route.params.id)
 
-const { data: chat } = await useFetch(`/api/chats/${chatId}`, {
+// @ts-ignore - Nuxt allows top-level await in script setup
+const { data: chat } = await useFetch<ServerChat>(`/api/chats/${chatId}`, {
   cache: 'force-cache'
 })
 
@@ -47,7 +53,8 @@ const chatClient = new Chat({
   messages: (chat.value?.messages ?? []).map((m: any) => ({
     id: m.id,
     role: m.role,
-    content: m.content
+    content: m.content,
+    parts: m.parts ?? []
   })),
   async onFinish() {
     refreshNuxtData('chats')
@@ -63,11 +70,13 @@ const chatClient = new Chat({
   }
 })
 
-const messages = computed(() =>
+const messages = computed<any[]>(() =>
   chatClient.messages.map((m: any) => ({
     id: m.id,
     role: m.role,
-    content: m.content || parseAIMessage(m)
+    content: m.content || parseAIMessage(m),
+    parts: m.parts ?? [],
+    reasoning: parseAIReasoning(m)
   }))
 )
 const status = computed(() => chatClient.status)
@@ -127,6 +136,14 @@ onMounted(() => {
               :components="components"
               :parser-options="{ highlight: false }"
             />
+            <div v-if="message.reasoning" class="mt-2">
+              <UDetails
+                :ui="{ base: 'text-xs', label: 'text-muted-foreground', icon: 'i-lucide-brain' }"
+                label="Reasoning"
+              >
+                <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground">{{ message.reasoning }}</pre>
+              </UDetails>
+            </div>
           </template>
         </UChatMessages>
 
