@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DefineComponent } from 'vue'
-import { ref, computed, onMounted, resolveComponent } from 'vue'
+import { ref, computed, onMounted, resolveComponent, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 // @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
@@ -65,6 +65,8 @@ const chatClient = new Chat({
     if (message && message.role === 'assistant') {
       checkAndTriggerCanvas(message)
     }
+    // Mark finished to prevent stuck loader
+    lastFinishedMessageId.value = message?.id || null
   },
   onError(err: any) {
     const message = typeof err?.message === 'string' && err.message[0] === '{' ? JSON.parse(err.message).message : err?.message
@@ -89,6 +91,7 @@ const messages = computed<any[]>(() =>
 )
 const status = computed(() => chatClient.status)
 const error = computed(() => chatClient.error)
+const lastFinishedMessageId = ref<string | null>(null)
 
 function handleSubmit() {
   if (!input.value || status.value === 'streaming') return
@@ -107,6 +110,44 @@ function reload() {
 const copied = ref(false)
 const canvasRef = ref()
 
+function extractTextPartsForTemplate(msg: any) {
+  const provided = msg?.textParts
+  if (Array.isArray(provided)) return provided
+  const parts = msg?.parts || []
+  return parts.filter((p: any) => p?.type === 'text-delta' || p?.type === 'text')
+}
+
+function hasDeltaParts(msg: any): boolean {
+  const parts = extractTextPartsForTemplate(msg)
+  return parts.some((p: any) => p?.type === 'text-delta' && (p?.delta || '') !== '')
+}
+
+function extractTrainingUrlFromMessage(msg: any): string | null {
+  // Check parts first (streaming)
+  const parts = extractTextPartsForTemplate(msg)
+  for (const p of parts) {
+    const text = p?.delta || p?.text || ''
+    const m = text.match(/::ui:canvas_open::([^\s\n]+)/)
+    if (m && m[1]) return m[1]
+  }
+  // Fallback: check final content
+  const content = (msg?.content || '') + ''
+  const mc = content.match(/::ui:canvas_open::([^\s\n]+)/)
+  return mc && mc[1] ? mc[1] : null
+}
+
+function getSanitizedTextPartsForTemplate(msg: any) {
+  return extractTextPartsForTemplate(msg).filter((p: any) => {
+    const text = p?.delta || p?.text || ''
+    return !/::ui:canvas_open::([^\s\n]+)/.test(text)
+  })
+}
+
+function getSanitizedContentForTemplate(msg: any) {
+  const content = (msg?.content || '') + ''
+  return content.replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
+}
+
 function copy(e: MouseEvent, message: any) {
   clipboard.copy(message.content)
   copied.value = true
@@ -122,7 +163,9 @@ function checkAndTriggerCanvas(message: any) {
     // 1. Check for TrainingUrl: format (Primary)
     const trainingUrlMatch = content.match(/TrainingUrl:\s*(https?:\/\/[^\s\n]+)/i)
     if (trainingUrlMatch) {
-      const url = trainingUrlMatch[1]
+      const capturedUrl = trainingUrlMatch[1]
+      if (!capturedUrl) return
+      const url = capturedUrl
       
       // Extract title if provided
       const titleMatch = content.match(/Title:\s*([^\n]+)/i)
@@ -138,7 +181,7 @@ function checkAndTriggerCanvas(message: any) {
 
     // 2. Fallback: SDK standard canvas data
     const canvasData = parseCanvasData(message)
-    if (canvasData && (canvasData.type === 'url' || canvasData.url)) {
+    if (canvasData && canvasData.url) {
       canvasRef.value?.updateContent({
         type: 'url',
         url: canvasData.url,
@@ -239,32 +282,91 @@ onMounted(() => {
     reload()
   }
 })
+
+// Reactive UI signal handling for ::ui:canvas_open::<URL>
+const hasCanvasOpenedForCurrentMessage = ref(false)
+
+async function openCanvasWithUrl(url: string, title?: string) {
+  if (!url) return
+  if (!isCanvasVisible.value) {
+    toggleCanvas()
+    await nextTick()
+  }
+  canvasRef.value?.updateContent({
+    type: 'url',
+    url,
+    title: title || `Training: ${new URL(url).hostname}`
+  })
+}
+
+function getAllStreamText(message: any): string {
+  const parts = extractTextPartsForTemplate(message) || []
+  return parts.map((p: any) => p?.delta || p?.text || '').join('')
+}
+
+function maybeProcessUiSignals(message: any) {
+  if (!message || hasCanvasOpenedForCurrentMessage.value) return
+  const allText = getAllStreamText(message)
+  const match = allText.match(/::ui:canvas_open::([^\s\n]+)/)
+  if (match && match[1]) {
+    hasCanvasOpenedForCurrentMessage.value = true
+    openCanvasWithUrl(match[1])
+  }
+}
+
+// Reset the processed flag whenever the last message changes
+watch(() => messages.value[messages.value.length - 1]?.id, () => {
+  hasCanvasOpenedForCurrentMessage.value = false
+})
+
+// Watch streaming progress and last message parts to detect the UI signal in near real-time
+watch(
+  () => ({
+    s: status.value,
+    lastId: messages.value[messages.value.length - 1]?.id,
+    lastRole: messages.value[messages.value.length - 1]?.role,
+    lastParts: messages.value[messages.value.length - 1]?.parts?.length
+  }),
+  () => {
+    const last = messages.value[messages.value.length - 1]
+    if (!last || last.role !== 'assistant') return
+    if (status.value === 'streaming') {
+      maybeProcessUiSignals(last)
+    }
+  },
+  { deep: true }
+)
+
+// Also watch the concatenated stream text to catch updates where parts length does not change
+watch(
+  () => {
+    const last = messages.value[messages.value.length - 1]
+    return last && last.role === 'assistant' ? getAllStreamText(last) : ''
+  },
+  () => {
+    const last = messages.value[messages.value.length - 1]
+    if (!last || last.role !== 'assistant') return
+    if (status.value === 'streaming') {
+      maybeProcessUiSignals(last)
+    }
+  }
+)
 </script>
 
 <template>
   <UDashboardPanel id="chat" class="relative" :ui="{ body: 'p-0 sm:p-0' }">
     <template #header>
       <DashboardNavbar>
-        <template #right>
-          <UButton
-            variant="ghost"
-            size="sm"
-            :icon="isCanvasVisible ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
-            @click="toggleCanvas"
-            class="hidden lg:inline-flex"
-          >
-            {{ isCanvasVisible ? 'Hide Canvas' : 'Show Canvas' }}
-          </UButton>
-        </template>
+        <template #right></template>
       </DashboardNavbar>
     </template>
 
     <template #body>
-      <div class="flex h-full">
+      <div class="flex h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden">
         <!-- Chat Area -->
         <div 
-          class="flex-1 flex flex-col transition-all duration-300"
-          :class="{ 'lg:pr-4': isCanvasVisible }"
+          class="flex flex-col transition-all duration-300 overflow-y-auto min-h-0"
+          :class="{ 'w-full lg:w-1/4': isCanvasVisible, 'flex-1': !isCanvasVisible, 'lg:pr-4': isCanvasVisible }"
         >
           <UContainer class="flex-1 flex flex-col gap-4 sm:gap-6">
             <UChatMessages
@@ -278,21 +380,50 @@ onMounted(() => {
               :spacing-offset="160"
             >
               <template #content="{ message }">
-                <!-- Text Delta Parts (Each in separate div) -->
-                <div v-if="message.textParts && message.textParts.length > 0">
-                  <div 
-                    v-for="(part, index) in message.textParts" 
-                    :key="`${message.id}-part-${index}`"
-                    class="whitespace-pre-line"
-                  >
-                    {{ part.delta || part.text || '' }}
+                <!-- Training URL UI (compact) -->
+                <div v-if="extractTrainingUrlFromMessage(message)" class="mb-2">
+                  <div class="flex items-center justify-between gap-3 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-3 py-2">
+                    <div class="text-xs">
+                      <span class="font-medium">Training URL</span>
+                      <span class="text-muted-foreground ml-2">{{ (extractTrainingUrlFromMessage(message) || '').replace(/^https?:\/\//, '').split('/')[0] }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <UButton
+                        size="xs"
+                        variant="soft"
+                        icon="i-lucide-external-link"
+                        @click.stop="openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
+                      >
+                        Open in Canvas
+                      </UButton>
+                      <UButton
+                        size="xs"
+                        variant="ghost"
+                        :icon="isCanvasVisible ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
+                        @click.stop="isCanvasVisible ? hideCanvas() : openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <!-- Fallback: Regular Content -->
+                <!-- Streaming: show standard reasoning as loader -->
+                <div v-if="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id">
+                  <UDetails
+                    open
+                    :ui="{ base: 'text-xs', label: 'text-muted-foreground', icon: 'i-lucide-brain' }"
+                    label="Reasoning"
+                  >
+                    <div class="flex items-start gap-2">
+                      <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mt-0.5 text-muted-foreground" />
+                      <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground">{{ message.reasoning || 'Thinking…' }}</pre>
+                    </div>
+                  </UDetails>
+                </div>
+
+                <!-- Final content (non-streaming or non-last message) -->
                 <div v-else class="whitespace-pre-line">
                   <MDCCached
-                    :value="message.content"
+                    :value="getSanitizedContentForTemplate(message)"
                     :cache-key="message.id"
                     unwrap="p"
                     :components="components"
@@ -300,7 +431,7 @@ onMounted(() => {
                   />
                 </div>
 
-                <div v-if="message.reasoning" class="mt-2">
+                <div v-if="message.reasoning && !(status === 'streaming' && message.id === messages[messages.length - 1]?.id)" class="mt-2">
                   <UDetails
                     :ui="{ base: 'text-xs', label: 'text-muted-foreground', icon: 'i-lucide-brain' }"
                     label="Reasoning"
@@ -335,10 +466,11 @@ onMounted(() => {
         <!-- Canvas Area -->
         <div 
           v-if="isCanvasVisible"
-          class="w-full lg:w-1/2 border-l border-gray-200 dark:border-gray-800 transition-all duration-300"
+          class="w-full lg:w-3/4 border-l border-gray-200 dark:border-gray-800 transition-all duration-300 sticky top-(--ui-header-height) self-start h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden flex flex-col relative"
         >
           <ChatCanvas 
             ref="canvasRef"
+            class="absolute inset-0 h-full w-full"
             @close="hideCanvas"
             @clear="() => clearCanvasContent()"
           />

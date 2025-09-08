@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col bg-default border-l border-gray-200 dark:border-gray-800">
+  <div ref="containerRef" class="w-full h-full min-h-0 flex flex-col bg-default border-l border-gray-200 dark:border-gray-800">
     <!-- Canvas Header -->
     <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
       <div class="flex items-center gap-2">
@@ -10,7 +10,7 @@
         <UButton
           variant="ghost"
           size="sm"
-          icon="i-lucide-maximize-2"
+          :icon="isFullscreen ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
           @click="toggleFullscreen"
         />
         <UButton
@@ -23,7 +23,7 @@
     </div>
 
     <!-- Canvas Content Area -->
-    <div class="flex-1 p-4 overflow-auto">
+    <div class="flex-1 min-h-0 p-0 overflow-hidden">
       <div v-if="!content" class="h-full flex items-center justify-center text-muted-foreground">
         <div class="text-center">
           <UIcon name="i-lucide-canvas" class="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -32,7 +32,7 @@
         </div>
       </div>
       
-      <div v-else>
+      <div class="h-full" v-else>
         <!-- Preview Content -->
         <div v-if="content.type === 'preview'" class="space-y-4">
           <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
@@ -82,10 +82,10 @@
         </div>
 
         <!-- URL Preview -->
-        <div v-else-if="content.type === 'url'" class="space-y-4">
-          <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-full">
+        <div v-else-if="content.type === 'url'" class="h-full min-h-0 flex flex-col">
+          <div class="bg-white dark:bg-gray-900 border-0 rounded-none flex-1 min-h-0 flex flex-col">
             <!-- URL Header -->
-            <div class="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div class="bg-gray-50 dark:bg-gray-800 px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-globe" class="w-4 h-4" />
                 <div class="text-sm font-medium truncate">{{ content.title }}</div>
@@ -109,11 +109,11 @@
             </div>
             
             <!-- URL Content -->
-            <div class="relative" style="height: calc(100vh - 200px);">
+            <div class="relative flex-1 min-h-0">
               <iframe
                 ref="iframeRef"
                 :src="content.url"
-                class="w-full h-full border-0"
+                class="block w-full h-full min-h-full border-0"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 loading="lazy"
                 @load="onIframeLoad"
@@ -154,44 +154,16 @@
       </div>
     </div>
 
-    <!-- Canvas Footer -->
-    <div v-if="content" class="border-t border-gray-200 dark:border-gray-800 p-4">
-      <div class="flex items-center gap-2">
-        <UButton
-          variant="soft"
-          size="sm"
-          icon="i-lucide-edit-3"
-          @click="editContent"
-        >
-          Edit
-        </UButton>
-        <UButton
-          variant="soft"
-          size="sm"
-          icon="i-lucide-download"
-          @click="downloadContent"
-        >
-          Export
-        </UButton>
-        <UButton
-          variant="soft"
-          size="sm"
-          icon="i-lucide-trash-2"
-          @click="clearContent"
-        >
-          Clear
-        </UButton>
-      </div>
-    </div>
+    <!-- Canvas Footer removed per requirements -->
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useClipboard } from '@vueuse/core'
 
 interface CanvasContent {
-  type: 'preview' | 'email' | 'code' | 'html' | 'markdown'
+  type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url'
   title?: string
   content?: string
   html?: string
@@ -201,6 +173,7 @@ interface CanvasContent {
   from?: string
   to?: string
   subject?: string
+  url?: string
 }
 
 const emit = defineEmits<{
@@ -309,9 +282,30 @@ const generateEmailHTML = (emailContent: CanvasContent) => {
 </html>`
 }
 
-const toggleFullscreen = () => {
-  // Implement fullscreen logic
+const containerRef = ref<HTMLElement | null>(null)
+const isFullscreen = ref(false)
+
+const onFsChange = () => {
+  isFullscreen.value = !!document.fullscreenElement
 }
+
+const toggleFullscreen = async () => {
+  try {
+    if (!isFullscreen.value) {
+      await containerRef.value?.requestFullscreen?.()
+    } else {
+      await document.exitFullscreen?.()
+    }
+  } catch {}
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', onFsChange)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', onFsChange)
+})
 
 // URL iframe methods
 const onIframeLoad = () => {

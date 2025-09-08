@@ -6,7 +6,7 @@
     <template #right>
       <slot name="right" />
       
-      <UColorModeButton />
+      <UColorModeButton v-if="!isCanvasVisible" />
 
       <UButton
         color="neutral"
@@ -18,3 +18,8 @@
     </template>
   </UDashboardNavbar>
 </template>
+
+<script setup lang="ts">
+import { useCanvas } from '../composables/useCanvas'
+const { isCanvasVisible } = useCanvas()
+</script>

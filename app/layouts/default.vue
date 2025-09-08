@@ -1,5 +1,8 @@
 <script setup lang="ts">
+// @ts-nocheck
 import { LazyModalConfirm } from '#components'
+import { useCanvas } from '../composables/useCanvas'
+const { isCanvasVisible } = useCanvas()
 
 const route = useRoute()
 const toast = useToast()
@@ -92,6 +95,7 @@ defineShortcuts({
       collapsible
       resizable
       class="bg-elevated/50"
+      v-show="!isCanvasVisible"
     >
       <template #header="{ collapsed }">
         <NuxtLink to="/" class="flex items-center gap-0.5">
@@ -137,7 +141,7 @@ defineShortcuts({
                 size="xs"
                 class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
                 tabindex="-1"
-                @click.stop.prevent="deleteChat((item as any).id)"
+                @click.stop.prevent="deleteChat(item.id)"
               />
             </div>
           </template>
