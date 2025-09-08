@@ -49,3 +49,48 @@ export function parseAIReasoning(message: any): string {
 
     return reasoningText
 }
+
+// Helper: extract canvas data from message parts (SDK standard)
+export function parseCanvasData(message: any): any {
+    if (!message) {
+        return null
+    }
+
+    // Check for canvas parts in message.parts
+    if (Array.isArray(message.parts) && message.parts.length > 0) {
+        const canvasPart = message.parts.find((p: any) => {
+            if (!p || typeof p !== 'object') return false
+            // Standard canvas keys
+            if (p.type === 'canvas') return true
+            if (p.type === 'canvas-url') return true
+            if (p.channel === 'canvas') return true
+            if (p.name === 'canvas') return true
+            if (p.key === 'canvas') return true
+            if (p?.metadata?.canvas === true) return true
+            // URL specific
+            if (p['canvas-url']) return true
+            return false
+        })
+
+        if (canvasPart) {
+            // Extract canvas data
+            return {
+                type: canvasPart.type || 'canvas',
+                url: canvasPart['canvas-url'] || canvasPart.url || canvasPart.text,
+                title: canvasPart.title || canvasPart.name,
+                data: canvasPart.data || canvasPart
+            }
+        }
+    }
+
+    // Fallback: check message level canvas fields
+    if (message['canvas-url']) {
+        return {
+            type: 'url',
+            url: message['canvas-url'],
+            title: message['canvas-title'] || `Website: ${new URL(message['canvas-url']).hostname}`
+        }
+    }
+
+    return null
+}
