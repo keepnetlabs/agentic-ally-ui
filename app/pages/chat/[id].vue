@@ -24,7 +24,7 @@ type ServerChat = {
 }
 
 const components = {
-  pre: resolveComponent('ProseStreamPre') as unknown as DefineComponent
+  pre: resolveComponent('PreStream') as unknown as DefineComponent
 }
 
 const route = useRoute()
@@ -278,6 +278,11 @@ function showInCanvas(e: MouseEvent, message: any) {
 }
 
 onMounted(() => {
+  // Close canvas when entering a new chat
+  if (isCanvasVisible.value) {
+    hideCanvas()
+  }
+  
   if (chat.value?.messages.length === 1) {
     reload()
   }
@@ -292,9 +297,15 @@ async function openCanvasWithUrl(url: string, title?: string) {
     toggleCanvas()
     await nextTick()
   }
+  // Always update content, even if canvas is already visible
+  await nextTick()
+  
+  // Force reload by updating content with a timestamp to make it unique
+  const urlWithTimestamp = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
+  
   canvasRef.value?.updateContent({
     type: 'url',
-    url,
+    url: urlWithTimestamp,
     title: title || `Training: ${new URL(url).hostname}`
   })
 }
@@ -316,6 +327,22 @@ function maybeProcessUiSignals(message: any) {
 
 // Reset the processed flag whenever the last message changes
 watch(() => messages.value[messages.value.length - 1]?.id, () => {
+  hasCanvasOpenedForCurrentMessage.value = false
+})
+
+// Close canvas when switching to different chat
+watch(() => route.params.id, () => {
+  if (isCanvasVisible.value) {
+    hideCanvas()
+  }
+  hasCanvasOpenedForCurrentMessage.value = false
+})
+
+// Close canvas when chat data changes (new chat created)
+watch(() => chat.value?.id, () => {
+  if (isCanvasVisible.value) {
+    hideCanvas()
+  }
   hasCanvasOpenedForCurrentMessage.value = false
 })
 
@@ -382,42 +409,50 @@ watch(
               <template #content="{ message }">
                 <!-- Training URL UI (compact) -->
                 <div v-if="extractTrainingUrlFromMessage(message)" class="mb-2">
-                  <div class="flex items-center justify-between gap-3 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-3 py-2">
-                    <div class="text-xs">
-                      <span class="font-medium">Training URL</span>
-                      <span class="text-muted-foreground ml-2">{{ (extractTrainingUrlFromMessage(message) || '').replace(/^https?:\/\//, '').split('/')[0] }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <UButton
-                        size="xs"
-                        variant="soft"
-                        icon="i-lucide-external-link"
-                        @click.stop="openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
-                      >
-                        Open in Canvas
-                      </UButton>
-                      <UButton
-                        size="xs"
-                        variant="ghost"
-                        :icon="isCanvasVisible ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
-                        @click.stop="isCanvasVisible ? hideCanvas() : openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
-                      />
+                  <div class="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-3 py-2">
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="text-xs">
+                        <span class="font-medium">Training URL</span>
+                        <span class="text-muted-foreground ml-2">{{ (extractTrainingUrlFromMessage(message) || '').replace(/^https?:\/\//, '').split('/')[0] }}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <UButton
+                          size="xs"
+                          variant="soft"
+                          :icon="isCanvasVisible ? 'i-lucide-refresh-cw' : 'i-lucide-external-link'"
+                          @click.stop="openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
+                        >
+                          {{ isCanvasVisible ? 'Reload' : 'Open' }}
+                        </UButton>
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          :icon="isCanvasVisible ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
+                          @click.stop="isCanvasVisible ? hideCanvas() : openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
+                        />
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          icon="i-lucide-copy"
+                          @click.stop="copy($event, message)"
+                        />
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          icon="i-lucide-share"
+                          @click.stop="() => {}"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <!-- Streaming: show standard reasoning as loader -->
+                <!-- Streaming: show thinking indicator -->
                 <div v-if="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id">
-                  <UDetails
-                    open
-                    :ui="{ base: 'text-xs', label: 'text-muted-foreground', icon: 'i-lucide-brain' }"
-                    label="Reasoning"
-                  >
-                    <div class="flex items-start gap-2">
-                      <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mt-0.5 text-muted-foreground" />
-                      <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground">{{ message.reasoning || 'Thinking…' }}</pre>
-                    </div>
-                  </UDetails>
+                  <div class="flex items-start gap-2 text-xs text-muted-foreground">
+                    <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mt-0.5" />
+                    <span>Thinking…</span>
+                  </div>
                 </div>
 
                 <!-- Final content (non-streaming or non-last message) -->
@@ -431,13 +466,18 @@ watch(
                   />
                 </div>
 
-                <div v-if="message.reasoning && !(status === 'streaming' && message.id === messages[messages.length - 1]?.id)" class="mt-2">
-                  <UDetails
-                    :ui="{ base: 'text-xs', label: 'text-muted-foreground', icon: 'i-lucide-brain' }"
-                    label="Reasoning"
-                  >
-                    <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground">{{ message.reasoning }}</pre>
-                  </UDetails>
+                <div v-if="message.reasoning && !(status === 'streaming' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id)" class="mt-2">
+                  <UCollapsible class="text-xs">
+                    <template #default>
+                      <UButton variant="ghost" size="xs" class="text-muted-foreground">
+                        <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mr-2" />
+                        Reasoning
+                      </UButton>
+                    </template>
+                    <template #content>
+                      <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground pt-2">{{ message.reasoning }}</pre>
+                    </template>
+                  </UCollapsible>
                 </div>
               </template>
             </UChatMessages>

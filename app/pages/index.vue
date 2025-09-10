@@ -5,18 +5,24 @@ const loading = ref(false)
 const { model } = useLLM()
 
 async function createChat(prompt: string) {
-  input.value = prompt
   loading.value = true
-  const chat = await $fetch('/api/chats', {
-    method: 'POST',
-    body: { prompt }
-  })
-  refreshNuxtData('chats')
-  navigateTo(`/chat/${chat.id}`)
+  try {
+    const chat = await $fetch('/api/chats', {
+      method: 'POST',
+      body: { prompt }
+    })
+    refreshNuxtData('chats')
+    navigateTo(`/chat/${chat.id}`)
+  } finally {
+    loading.value = false
+  }
 }
 
 function onSubmit() {
-  createChat(input.value)
+  if (!input.value.trim() || loading.value) return
+  const prompt = input.value.trim()
+  input.value = ''
+  createChat(prompt)
 }
 
 const quickChats = [
@@ -62,7 +68,7 @@ const quickChats = [
           variant="subtle"
           @submit="onSubmit"
         >
-          <UChatPromptSubmit color="neutral" />
+          <UChatPromptSubmit color="neutral" :status="loading ? 'streaming' : 'ready'" />
 
           <template #footer>
             <ModelSelect v-model="model" />
@@ -75,6 +81,7 @@ const quickChats = [
             :key="quickChat.label"
             :icon="quickChat.icon"
             :label="quickChat.label"
+            :disabled="loading"
             size="sm"
             color="neutral"
             variant="outline"

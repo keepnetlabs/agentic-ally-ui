@@ -1,27 +1,5 @@
 <template>
   <div ref="containerRef" class="w-full h-full min-h-0 flex flex-col bg-default border-l border-gray-200 dark:border-gray-800">
-    <!-- Canvas Header -->
-    <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
-      <div class="flex items-center gap-2">
-        <UIcon name="i-lucide-canvas" class="w-4 h-4" />
-        <h3 class="font-medium">Canvas</h3>
-      </div>
-      <div class="flex items-center gap-2">
-        <UButton
-          variant="ghost"
-          size="sm"
-          :icon="isFullscreen ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
-          @click="toggleFullscreen"
-        />
-        <UButton
-          variant="ghost"
-          size="sm"
-          icon="i-lucide-x"
-          @click="$emit('close')"
-        />
-      </div>
-    </div>
-
     <!-- Canvas Content Area -->
     <div class="flex-1 min-h-0 p-0 overflow-hidden">
       <div v-if="!content" class="h-full flex items-center justify-center text-muted-foreground">
@@ -103,6 +81,20 @@
                   size="sm"
                   icon="i-lucide-refresh-cw"
                   @click="refreshIframe"
+                  class="text-gray-500 hover:text-gray-700"
+                />
+                <UButton
+                  variant="ghost"
+                  size="sm"
+                  :icon="isFullscreen ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
+                  @click="toggleFullscreen"
+                  class="text-gray-500 hover:text-gray-700"
+                />
+                <UButton
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-x"
+                  @click="$emit('close')"
                   class="text-gray-500 hover:text-gray-700"
                 />
               </div>
@@ -322,7 +314,14 @@ const refreshIframe = () => {
   if (iframeRef.value && content.value?.url) {
     iframeLoading.value = true
     iframeError.value = false
-    iframeRef.value.src = content.value.url
+    // Force reload by temporarily changing src to empty and then back to URL
+    const currentUrl = content.value.url
+    iframeRef.value.src = ''
+    setTimeout(() => {
+      if (iframeRef.value) {
+        iframeRef.value.src = currentUrl
+      }
+    }, 10)
   }
 }
 

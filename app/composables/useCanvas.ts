@@ -94,14 +94,14 @@ export const useCanvas = () => {
     // State
     isCanvasVisible: readonly(isCanvasVisible),
     canvasContent: readonly(canvasContent),
-    
+
     // Actions
     showCanvas,
     hideCanvas,
     toggleCanvas,
     updateCanvasContent,
     clearCanvasContent,
-    
+
     // Helpers
     showEmailPreview,
     showCodePreview,
@@ -121,7 +121,7 @@ export const canvasEventBus = {
     const { showEmailPreview } = useCanvas()
     showEmailPreview(emailData)
   },
-  
+
   showCode: (codeData: {
     code: string
     filename?: string
@@ -130,7 +130,7 @@ export const canvasEventBus = {
     const { showCodePreview } = useCanvas()
     showCodePreview(codeData)
   },
-  
+
   showHTML: (htmlData: {
     html: string
     title?: string
@@ -138,7 +138,7 @@ export const canvasEventBus = {
     const { showHTMLPreview } = useCanvas()
     showHTMLPreview(htmlData)
   },
-  
+
   showPreview: (previewData: {
     title?: string
     content?: string

@@ -91,11 +91,11 @@ defineShortcuts({
     <UDashboardSidebar
       id="default"
       v-model:open="open"
+      v-model:collapsed="isCanvasVisible"
       :min-size="12"
       collapsible
       resizable
       class="bg-elevated/50"
-      v-show="!isCanvasVisible"
     >
       <template #header="{ collapsed }">
         <NuxtLink to="/" class="flex items-center gap-0.5">
