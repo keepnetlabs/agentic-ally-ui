@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { DefineComponent } from 'vue'
-import { ref, computed, onMounted, resolveComponent, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 // @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
@@ -24,7 +23,7 @@ type ServerChat = {
 }
 
 const components = {
-  pre: resolveComponent('PreStream') as unknown as DefineComponent
+  pre: 'PreStream'
 }
 
 const route = useRoute()
@@ -37,8 +36,9 @@ const chatId = String(route.params.id)
 
 // @ts-ignore - Nuxt allows top-level await in script setup
 const { data: chat } = await useFetch<ServerChat>(`/api/chats/${chatId}`, {
-  cache: 'force-cache'
+  key: `chat-${chatId}`
 })
+console.log(chat.value)
 
 if (!chat.value) {
   throw createError({ statusCode: 404, statusMessage: 'Chat not found', fatal: true })
@@ -58,13 +58,48 @@ const chatClient = new Chat({
     content: m.content,
     parts: m.parts ?? []
   })),
-  async onFinish(message: any) {
-    refreshNuxtData('chats')
+  async onFinish(data: any) {
+    console.log('onFinish called with:', data)
     
-    // Auto-trigger canvas for URLs in AI response
+    // Extract the actual message from the data structure
+    const message = data.message || data
+    
+    console.log('Extracted message:', message)
+    console.log('Message role:', message?.role)
+    console.log('Message id:', message?.id)
+    
+    // Save AI response to database
     if (message && message.role === 'assistant') {
+      const content = message.content || parseAIMessage(message)
+      console.log('Trying to save AI message:', {
+        id: message.id,
+        role: message.role,
+        content: content?.substring(0, 100) + '...',
+        contentLength: content?.length
+      })
+      
+      try {
+        const result = await $fetch(`/api/chats/${chatId}/messages`, {
+          method: 'POST',
+          body: {
+            id: message.id,
+            role: 'assistant',
+            content: content
+          }
+        })
+        console.log('AI message saved successfully:', result)
+      } catch (error) {
+        console.error('Failed to save AI message:', error)
+      }
+      
+      // Auto-trigger canvas for URLs in AI response
       checkAndTriggerCanvas(message)
+    } else {
+      console.log('Not saving - message not found or not assistant role')
+      console.log('Message exists?', !!message)
+      console.log('Role is assistant?', message?.role === 'assistant')
     }
+    
     // Mark finished to prevent stuck loader
     lastFinishedMessageId.value = message?.id || null
   },
