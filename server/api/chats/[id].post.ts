@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   const { id } = getRouterParams(event)
   // TODO: Use readValidatedBody
-  const { model, messages } = await readBody(event)
+  const { model, messages, conversationId } = await readBody(event)
 
   const db = useDrizzle()
 
@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
       headers: {
         'content-type': 'application/json'
       },
-      body: JSON.stringify({ model, messages })
+      body: JSON.stringify({ model, messages, conversationId })
     })
 
     if (!response.ok) {

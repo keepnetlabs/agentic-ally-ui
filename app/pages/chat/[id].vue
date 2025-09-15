@@ -50,7 +50,7 @@ const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
     api: `/api/chats/${chatId}`,
-    body: { model: model.value }
+    body: { model: model.value, conversationId: chatId }
   }),
   messages: (chat.value?.messages ?? []).map((m: any) => ({
     id: m.id,
@@ -471,12 +471,6 @@ watch(
                           icon="i-lucide-copy"
                           @click.stop="copy($event, message)"
                         />
-                        <UButton
-                          size="xs"
-                          variant="ghost"
-                          icon="i-lucide-share"
-                          @click.stop="() => {}"
-                        />
                       </div>
                     </div>
                   </div>
@@ -521,7 +515,10 @@ watch(
               v-model="input"
               :error="error"
               variant="subtle"
-              class="sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10"
+              :class="[
+                'sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10',
+                input.length === 0 ? 'force-default-height' : ''
+              ]"
               @submit="handleSubmit"
             >
               <UChatPromptSubmit
@@ -554,3 +551,18 @@ watch(
     </template>
   </UDashboardPanel>
 </template>
+
+<style scoped>
+/* Force max height when input is empty to prevent layout expansion */
+:deep(.force-default-height) {
+  max-height: 88px !important;
+  height: 88px !important;
+}
+
+:deep(.force-default-height textarea),
+:deep(.force-default-height input) {
+  max-height: 36px !important;
+  height: 36px !important;
+  overflow: hidden;
+}
+</style>
