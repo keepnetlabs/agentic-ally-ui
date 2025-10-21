@@ -2,7 +2,7 @@
 // @ts-nocheck
 import { LazyModalConfirm } from '#components'
 import { useCanvas } from '../composables/useCanvas'
-const { isCanvasVisible } = useCanvas()
+const { isCanvasVisible, hideCanvas } = useCanvas()
 
 const route = useRoute()
 const toast = useToast()
@@ -41,6 +41,25 @@ watch(loggedIn, () => {
   refreshChats()
 
   open.value = false
+})
+
+watch(isCanvasVisible, (newValue) => {
+  if (newValue) {
+    window.parent.postMessage({
+      type: 'CANVAS_CLICK'
+    }, '*')
+  }
+})
+
+onMounted(() => {
+  window.addEventListener('message', (event) => {
+    if (event.data.type === 'FULLWIDTH_TOGGLE') {
+      const { data } = event
+      if (!data.isFullWidth) {
+        hideCanvas()
+      }
+    }
+  })
 })
 
 const { groups } = useChats(chats)
@@ -150,15 +169,6 @@ defineShortcuts({
 
       <template #footer="{ collapsed }">
         <UserMenu v-if="loggedIn" :collapsed="collapsed" />
-        <UButton
-          v-else
-          :label="collapsed ? '' : 'Login with GitHub'"
-          icon="i-simple-icons-github"
-          color="neutral"
-          variant="ghost"
-          class="w-full"
-          @click="openInPopup('/auth/github')"
-        />
       </template>
     </UDashboardSidebar>
 

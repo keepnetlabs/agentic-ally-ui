@@ -1,5 +1,3 @@
-import { parseAIMessage } from '../../utils/text-utils'
-
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event)
 

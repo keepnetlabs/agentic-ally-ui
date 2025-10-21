@@ -104,25 +104,67 @@ const chatClient = new Chat({
     lastFinishedMessageId.value = message?.id || null
   },
   onError(err: any) {
-    const message = typeof err?.message === 'string' && err.message[0] === '{' ? JSON.parse(err.message).message : err?.message
-    toast.add({
-      description: message,
-      icon: 'i-lucide-alert-circle',
-      color: 'error',
-      duration: 0
-    })
+    try {
+      console.error('Chat stream error:', err)
+      console.error('Full error object:', JSON.stringify(err, null, 2))
+
+      let errorMessage = 'An unknown error occurred'
+
+      if (err?.message) {
+        try {
+          // Try to parse as JSON if it starts with '{'
+          if (typeof err.message === 'string' && err.message[0] === '{') {
+            const parsed = JSON.parse(err.message)
+            errorMessage = parsed?.message || err.message
+          } else {
+            errorMessage = err.message
+          }
+        } catch (parseErr) {
+          // If parsing fails, just use the message as-is
+          errorMessage = err.message
+        }
+      } else if (typeof err === 'string') {
+        errorMessage = err
+      }
+
+      toast.add({
+        description: errorMessage,
+        icon: 'i-lucide-alert-circle',
+        color: 'error',
+        duration: 0
+      })
+    } catch (handlerErr) {
+      console.error('Error in onError handler:', handlerErr)
+      toast.add({
+        description: 'An error occurred while processing the stream',
+        icon: 'i-lucide-alert-circle',
+        color: 'error',
+        duration: 0
+      })
+    }
   }
 })
 
 const messages = computed<any[]>(() =>
-  chatClient.messages.map((m: any) => ({
-    id: m.id,
-    role: m.role,
-    content: m.content || parseAIMessage(m),
-    parts: m.parts ?? [],
-    textParts: (m.parts ?? []).filter((p: any) => p.type === 'text-delta' || p.type === 'text'),
-    reasoning: parseAIReasoning(m)
-  }))
+  chatClient.messages.map((m: any) => {
+    const reasoning = parseAIReasoning(m)
+    if (reasoning && m.role === 'assistant') {
+      console.log('Message with reasoning:', {
+        id: m.id,
+        partsCount: m.parts?.length,
+        reasoningLength: reasoning.length,
+        parts: m.parts
+      })
+    }
+    return {
+      id: m.id,
+      role: m.role,
+      content: m.content || parseAIMessage(m),
+      parts: m.parts ?? [],
+      textParts: (m.parts ?? []).filter((p: any) => p && (p.type === 'text-delta' || p.type === 'text')),
+      reasoning
+    }
+  })
 )
 const status = computed(() => chatClient.status)
 const error = computed(() => chatClient.error)

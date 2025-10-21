@@ -75,10 +75,10 @@ export function parseCanvasData(message: any): any {
         if (canvasPart) {
             // Extract canvas data
             return {
-                type: canvasPart.type || 'canvas',
-                url: canvasPart['canvas-url'] || canvasPart.url || canvasPart.text,
-                title: canvasPart.title || canvasPart.name,
-                data: canvasPart.data || canvasPart
+                type: canvasPart?.type || 'canvas',
+                url: canvasPart?.['canvas-url'] || canvasPart?.url || canvasPart?.text,
+                title: canvasPart?.title || canvasPart?.name,
+                data: canvasPart?.data || canvasPart
             }
         }
     }

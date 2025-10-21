@@ -13,6 +13,7 @@ export function parseAIMessage(message: any): string {
     }
 
     const text = message.parts
+        .filter((p: any) => p !== undefined && p !== null)
         .map((p: any) => (typeof p === 'string' ? p : p?.text ?? ''))
         .join('')
 

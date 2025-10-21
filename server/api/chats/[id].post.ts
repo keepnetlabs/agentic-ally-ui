@@ -86,6 +86,8 @@ export default defineEventHandler(async (event) => {
 
     let buffer = ''
     let skipNextBlank = false
+    let lastTextId = ''
+    let lastReasoningId = ''
 
     const transform = new TransformStream<string, string>({
       transform(chunk, controller) {
@@ -113,9 +115,44 @@ export default defineEventHandler(async (event) => {
             try {
               const obj = JSON.parse(jsonText)
               if (obj && typeof obj === 'object' && typeof obj.type === 'string') {
+                // Generate unique ID for text-start events if missing
+                if ((obj.type === 'text-start' || obj.type === 'text-delta' || obj.type === 'text-end') && !obj.id) {
+                  if (obj.type === 'text-start') {
+                    lastTextId = `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                    obj.id = lastTextId
+                    console.warn('Generated missing id for text-start event:', obj.id)
+                  } else if (lastTextId) {
+                    // Reuse the last text-start ID for delta and end events
+                    obj.id = lastTextId
+                  }
+                }
+
+                // Generate unique ID for reasoning events if missing
+                if ((obj.type === 'reasoning-start' || obj.type === 'reasoning-delta' || obj.type === 'reasoning-end') && !obj.id) {
+                  if (obj.type === 'reasoning-start') {
+                    lastReasoningId = `reasoning-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                    obj.id = lastReasoningId
+                    console.warn('Generated missing id for reasoning-start event:', obj.id)
+                  } else if (lastReasoningId) {
+                    // Reuse the last reasoning-start ID for delta and end events
+                    obj.id = lastReasoningId
+                  }
+                }
+
                 if (obj.type.startsWith('workflow-')) {
                   // drop this line and the following blank separator
                   skipNextBlank = true
+                  newlineIndex = buffer.indexOf('\n')
+                  continue
+                }
+
+                // Re-encode the object if we modified it
+                const isTextEvent = obj.type === 'text-start' || obj.type === 'text-delta' || obj.type === 'text-end'
+                const isReasoningEvent = obj.type === 'reasoning-start' || obj.type === 'reasoning-delta' || obj.type === 'reasoning-end'
+
+                if ((isTextEvent || isReasoningEvent) && obj.id && !jsonText.includes(obj.id)) {
+                  const modifiedLine = 'data: ' + JSON.stringify(obj) + '\n'
+                  controller.enqueue(modifiedLine)
                   newlineIndex = buffer.indexOf('\n')
                   continue
                 }
