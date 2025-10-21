@@ -106,7 +106,7 @@
                 ref="iframeRef"
                 :src="content.url"
                 class="block w-full h-full min-h-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-popups-to-escape-sandbox"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-popups-to-escape-sandbox"
                 loading="lazy"
                 @load="onIframeLoad"
                 @error="onIframeError"
