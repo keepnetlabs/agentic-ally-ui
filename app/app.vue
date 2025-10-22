@@ -17,8 +17,8 @@ useHead({
   }
 })
 
-const title = 'KeepNet Agentic Ally'
-const description = 'The best AI agent for KeepNet'
+const title = 'Keepnet Agentic Ally'
+const description = 'The best AI agent for Keepnet'
 
 useSeoMeta({
   title,
