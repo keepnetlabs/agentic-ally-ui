@@ -107,6 +107,17 @@
                 :src="content.url"
                 class="block w-full h-full min-h-full border-0"
                 loading="lazy"
+                allowfullscreen
+                allow="accelerometer; 
+                      autoplay; 
+                      clipboard-write; 
+                      encrypted-media; 
+                      fullscreen; 
+                      geolocation; 
+                      gyroscope; 
+                      magnetometer; 
+                      microphone; 
+                      picture-in-picture;"
                 @load="onIframeLoad"
                 @error="onIframeError"
               />
