@@ -27,24 +27,24 @@ function onSubmit() {
 
 const quickChats = [
   {
-    label: 'Create Phishing Awareness Microlearning',
+    label: 'Create Phishing Awareness',
     icon: 'i-lucide-shield-alert'
   },
   {
-    label: 'GDPR Essentials Microlearning',
-    icon: 'i-lucide-scale'
+    label: 'Create Quishing Awareness',
+    icon: 'i-lucide-qr-code'
   },
   {
     label: 'Secure Remote Work Basics',
     icon: 'i-lucide-laptop'
   },
   {
-    label: 'Strong Passwords & MFA',
-    icon: 'i-lucide-key-round'
+    label: 'MFA',
+    icon: 'i-lucide-shield-check'
   },
   {
-    label: 'Cloud Data Protection',
-    icon: 'i-lucide-file-lock-2'
+    label: 'Create Strong Passwords',
+    icon: 'i-lucide-key-round'
   }
 ]
 </script>
