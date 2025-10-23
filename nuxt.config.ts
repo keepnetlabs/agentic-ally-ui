@@ -11,6 +11,18 @@ export default defineNuxtConfig({
     "nuxt-auth-utils"
   ],
 
+  runtimeConfig: {
+    session: {
+      name: 'nuxt-session',
+      password: process.env.NUXT_SESSION_PASSWORD || 'change-this-to-a-secure-password-with-at-least-32-characters-minimum',
+      cookie: {
+        sameSite: 'none',
+        secure: true,
+        httpOnly: true
+      }
+    }
+  },
+
   devtools: {
     enabled: true
   },

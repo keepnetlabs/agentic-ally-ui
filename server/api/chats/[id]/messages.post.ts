@@ -3,20 +3,22 @@ import * as tables from '../../../database/schema'
 
 export default defineEventHandler(async (event) => {
   console.log('Messages POST endpoint called')
-  
+
   const session = await getUserSession(event)
   const { id } = getRouterParams(event)
   const body = await readBody(event)
-  
-  console.log('Request data:', { chatId: id, body, userId: (session as any).user?.id || session.id })
-  
+
+  // Fallback user ID if session is empty (for iframe access)
+  const userId = (session as any).user?.id || session?.id || 'guest-session'
+
+  console.log('Request data:', { chatId: id, body, userId })
+
   const { id: messageId, role, content } = body
   const db = useDrizzle()
 
   // Verify chat exists and belongs to user
   const chat = await db.query.chats.findFirst({
     where: (chat, { eq }) => {
-      const userId = (session as any).user?.id || session.id
       return and(eq(chat.id, id as string), eq(chat.userId, userId))
     }
   })

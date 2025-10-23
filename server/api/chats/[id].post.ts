@@ -18,9 +18,11 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
+  // Fallback user ID if session is empty (for iframe access)
+  const userId = (session as any).user?.id || session?.id || 'guest-session'
+
   const chat = await db.query.chats.findFirst({
     where: (chat, { eq }) => {
-      const userId = (session as any).user?.id || session.id
       return and(eq(chat.id, id as string), eq(chat.userId, userId))
     },
     with: {

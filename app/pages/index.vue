@@ -7,12 +7,25 @@ const { model } = useLLM()
 async function createChat(prompt: string) {
   loading.value = true
   try {
+    console.log('Creating chat with prompt:', prompt)
     const chat = await $fetch('/api/chats', {
       method: 'POST',
-      body: { prompt }
+      body: { prompt },
+      credentials: 'include'
     })
+    console.log('Chat created:', chat)
+    console.log('Chat ID:', chat?.id)
+    console.log('Full chat object:', JSON.stringify(chat))
+
+    if (!chat?.id) {
+      console.error('Chat ID missing!', chat)
+      return
+    }
+
     refreshNuxtData('chats')
     navigateTo(`/chat/${chat.id}`)
+  } catch(e) {
+    console.error('Error creating chat:', e)
   } finally {
     loading.value = false
   }

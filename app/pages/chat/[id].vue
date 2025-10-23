@@ -36,7 +36,8 @@ const chatId = String(route.params.id)
 
 // @ts-ignore - Nuxt allows top-level await in script setup
 const { data: chat } = await useFetch<ServerChat>(`/api/chats/${chatId}`, {
-  key: `chat-${chatId}`
+  key: `chat-${chatId}`,
+  credentials: 'include'  // Allow cookies in cross-origin requests
 })
 console.log(chat.value)
 
