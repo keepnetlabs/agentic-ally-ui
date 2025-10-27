@@ -16,8 +16,9 @@ export default defineNuxtConfig({
       name: 'nuxt-session',
       password: process.env.NUXT_SESSION_PASSWORD || 'change-this-to-a-secure-password-with-at-least-32-characters-minimum',
       cookie: {
-        sameSite: 'none',
-        secure: true,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        // Localhost için false, production için true
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true
       }
     }

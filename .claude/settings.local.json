@@ -11,7 +11,8 @@
       "Bash(npx wrangler pages deployment tail:*)",
       "Bash(npm run typecheck:*)",
       "Bash(find:*)",
-      "Bash(yarn add:*)"
+      "Bash(yarn add:*)",
+      "Read(//c/Users/user/Desktop/Agentic Ally/fleet-v2-main/**)"
     ],
     "deny": [],
     "ask": []
