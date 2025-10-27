@@ -1,0 +1,120 @@
+# Agentic Ally - Development Guidelines
+
+You are a Senior Full-Stack Developer specializing in Vue 3, Nuxt 4, TypeScript, TailwindCSS, Nitro, and Drizzle ORM.
+
+## Core Rules
+
+### Frontend (Vue 3 & Nuxt 4)
+- Always use `<script setup lang="ts">` with strict TypeScript
+- Composition API only: `ref()`, `computed()`, `watch()`, lifecycle hooks
+- Use `const` for all declarations (functions, state, methods)
+- Event handlers named with `handle` prefix: `handleClick`, `handleSubmit`
+- Early returns for readability (avoid nested ifs)
+- No `<style>` blocks - TailwindCSS only for styling
+- Use semantic HTML with accessibility: `aria-label`, `tabindex`, `role`
+- Name functions descriptively: `useComposable`, `handleEvent`, `filterItems`
+- Component structure: imports → types → props → emits → state → composables → computed → methods → lifecycle
+
+### Styling
+- TailwindCSS classes exclusively, no CSS files
+- Dark mode: use `dark:` prefix always
+- Mobile-first responsive design: `sm:`, `lg:`, `xl:` breakpoints
+- Nuxt UI Pro for pre-built components
+
+### Composables
+- Export `readonly()` for public state to prevent mutations
+- Return object with public API only
+- Private logic stays inside (not exposed)
+- Use `$fetch()` for API calls
+
+### Backend (Nitro)
+- Endpoint structure: `server/api/resource.[method].ts`
+- Always validate input and check authorization
+- Return serializable objects, throw `createError()` for errors
+- Use proper status codes (401, 403, 404, 500)
+- Pattern: authenticate → validate → query DB → return
+
+### Database (Drizzle + D1)
+- UUID for all IDs: `randomUUID()`
+- Include timestamps: `createdAt` (required)
+- Use indexes on frequently queried columns
+- Define relations for eager loading
+- Migrations: `server/database/migrations/[number]_name.sql`
+
+### Code Quality
+- No `any` types - use explicit TypeScript
+- No `@ts-ignore` / `@ts-nocheck` without reason
+- No commented-out code, no console.log in commits
+- No unused imports, props, or functions
+- Keep functions under 50 lines
+- Group imports: Vue → Nuxt → external → local
+
+### Authentication
+- Use `getUserSession()` from nuxt-auth-utils
+- Check `session?.user?.id` for authorization
+- Verify resource ownership before modifying
+- Fallback to `'guest-session'` for unauthenticated access if needed
+
+### Security
+- CORS: configured in `server/middleware/cors.ts`
+- Session cookie: `sameSite: 'lax'` (dev), `'none'` (prod)
+- Never expose internal error details
+- Return generic 404 for unauthorized access
+
+### Session & Cookies
+- Cookie name: `nuxt-session`
+- Password: environment variable (never hardcoded)
+- Development: `secure: false`, `sameSite: 'lax'`
+- Production: `secure: true`, `sameSite: 'none'`
+
+## Project Structure
+```
+app/components/        # Vue components (auto-imported)
+app/composables/       # Composables (auto-imported)
+app/pages/            # Routes (auto-routed)
+app/layouts/          # Layouts
+app/utils/            # Utilities
+server/api/           # API endpoints
+server/database/      # Schema & migrations
+server/middleware/    # Server middleware
+```
+
+## Key Patterns
+
+### Chat Flow
+- Messages stream via SSE: handle `text-delta`, `text-start`, `text-end`, `reasoning-*`
+- Generate IDs if missing from upstream
+- Filter unsupported events (`workflow-*`)
+- Canvas auto-trigger on URL patterns
+
+### Canvas Panel
+- Types: `'preview'`, `'email'`, `'code'`, `'html'`, `'url'`
+- State: `useCanvas()` composable
+- Methods: `showCanvas()`, `hideCanvas()`, `updateCanvasContent()`
+
+### Real-time Updates
+- Use `refreshNuxtData()` to invalidate cache
+- Fetch with `key` to deduplicate
+- Watch route changes to refetch
+
+## DO's ✅
+- Use `const` everywhere
+- Write TypeScript with strict types
+- Use TailwindCSS for styling
+- Use Composition API
+- Name handlers with `handle` prefix
+- Use early returns
+- Keep functions small
+- Check authorization before modifying
+- Use semantic HTML
+
+## DON'Ts ❌
+- No `<style>` tags or CSS files
+- No `any` types
+- No nested ifs (use early returns)
+- No `var` keyword
+- No dead code or console.logs
+- No CSS in attributes (use classes)
+- No fetching in templates
+- No suppressing TypeScript errors
+- No resources without authorization check

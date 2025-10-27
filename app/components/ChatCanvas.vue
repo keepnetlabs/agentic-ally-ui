@@ -69,6 +69,33 @@
                 <div class="text-sm font-medium truncate">{{ content.title }}</div>
               </div>
               <div class="flex items-center gap-2">
+                <!-- View Mode Buttons -->
+                <div class="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-2 mr-2">
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-smartphone"
+                    :color="viewMode === 'mobile' ? 'primary' : 'neutral'"
+                    @click="setViewMode('mobile')"
+                    class="transition-colors"
+                  />
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-tablet"
+                    :color="viewMode === 'tablet' ? 'primary' : 'neutral'"
+                    @click="setViewMode('tablet')"
+                    class="transition-colors"
+                  />
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-monitor"
+                    :color="viewMode === 'desktop' ? 'primary' : 'neutral'"
+                    @click="setViewMode('desktop')"
+                    class="transition-colors"
+                  />
+                </div>
                 <UButton
                   variant="ghost"
                   size="sm"
@@ -101,26 +128,35 @@
             </div>
             
             <!-- URL Content -->
-            <div class="relative flex-1 min-h-0">
-              <iframe
-                ref="iframeRef"
-                :src="content.url"
-                class="block w-full h-full min-h-full border-0"
-                loading="lazy"
-                allowfullscreen
-                allow="accelerometer; 
-                      autoplay; 
-                      clipboard-write; 
-                      encrypted-media; 
-                      fullscreen; 
-                      geolocation; 
-                      gyroscope; 
-                      magnetometer; 
-                      microphone; 
-                      picture-in-picture;"
-                @load="onIframeLoad"
-                @error="onIframeError"
-              />
+            <div class="relative flex-1 min-h-0 bg-gray-100 dark:bg-gray-950 flex items-center justify-center">
+              <div :class="[
+                'transition-all duration-300 bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden h-full',
+                {
+                  'w-[450px]': viewMode === 'mobile',
+                  'w-[820px]': viewMode === 'tablet',
+                  'w-full rounded-none shadow-none': viewMode === 'desktop'
+                }
+              ]">
+                <iframe
+                  ref="iframeRef"
+                  :src="content.url"
+                  class="block w-full h-full border-0"
+                  loading="lazy"
+                  allowfullscreen
+                  allow="accelerometer;
+                        autoplay;
+                        clipboard-write;
+                        encrypted-media;
+                        fullscreen;
+                        geolocation;
+                        gyroscope;
+                        magnetometer;
+                        microphone;
+                        picture-in-picture;"
+                  @load="onIframeLoad"
+                  @error="onIframeError"
+                />
+              </div>
               
               <!-- Loading State -->
               <div v-if="iframeLoading" class="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -155,8 +191,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Canvas Footer removed per requirements -->
   </div>
 </template>
 
@@ -180,7 +214,6 @@ interface CanvasContent {
 
 const emit = defineEmits<{
   close: []
-  edit: [content: CanvasContent]
   clear: []
 }>()
 
@@ -211,84 +244,22 @@ const clearContent = () => {
   emit('clear')
 }
 
-const editContent = () => {
-  if (content.value) {
-    emit('edit', content.value)
-  }
-}
-
 const copyCode = () => {
   if (content.value?.code) {
     copy(content.value.code)
   }
 }
 
-const downloadContent = () => {
-  if (!content.value) return
-  
-  let filename = 'canvas-content'
-  let data = ''
-  let type = 'text/plain'
-  
-  switch (content.value.type) {
-    case 'email':
-      filename = `${content.value.subject || 'email'}.html`
-      data = generateEmailHTML(content.value)
-      type = 'text/html'
-      break
-    case 'code':
-      filename = content.value.filename || 'code.txt'
-      data = content.value.code || ''
-      break
-    case 'html':
-    case 'preview':
-      filename = `${content.value.title || 'preview'}.html`
-      data = content.value.html || content.value.content || ''
-      type = 'text/html'
-      break
-    default:
-      data = content.value.content || content.value.html || ''
-  }
-  
-  const blob = new Blob([data], { type })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-const generateEmailHTML = (emailContent: CanvasContent) => {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>${emailContent.subject || 'Email'}</title>
-  <meta charset="utf-8">
-</head>
-<body style="font-family: Arial, sans-serif; margin: 0; padding: 20px;">
-  <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px;">
-    <div style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd;">
-      <div style="font-size: 12px; color: #666;">
-        <div><strong>From:</strong> ${emailContent.from || 'sender@example.com'}</div>
-        <div><strong>To:</strong> ${emailContent.to || 'recipient@example.com'}</div>
-        <div><strong>Subject:</strong> ${emailContent.subject || 'Email Subject'}</div>
-      </div>
-    </div>
-    <div style="padding: 20px;">
-      ${emailContent.body || emailContent.content || ''}
-    </div>
-  </div>
-</body>
-</html>`
-}
-
 const containerRef = ref<HTMLElement | null>(null)
 const isFullscreen = ref(false)
+const viewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
 
 const onFsChange = () => {
   isFullscreen.value = !!document.fullscreenElement
+}
+
+const setViewMode = (mode: 'mobile' | 'tablet' | 'desktop') => {
+  viewMode.value = mode
 }
 
 const toggleFullscreen = async () => {
@@ -324,14 +295,13 @@ const refreshIframe = () => {
   if (iframeRef.value && content.value?.url) {
     iframeLoading.value = true
     iframeError.value = false
-    // Force reload by temporarily changing src to empty and then back to URL
     const currentUrl = content.value.url
     iframeRef.value.src = ''
     setTimeout(() => {
       if (iframeRef.value) {
         iframeRef.value.src = currentUrl
       }
-    }, 10)
+    }, 100)
   }
 }
 
@@ -344,6 +314,7 @@ const openInNewTab = () => {
 // Expose methods for parent components
 defineExpose({
   updateContent,
-  clearContent
+  clearContent,
+  setViewMode
 })
 </script>

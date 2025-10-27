@@ -188,6 +188,23 @@ function reload() {
 const copied = ref(false)
 const canvasRef = ref()
 
+// Compute assistant config with conditional actions based on streaming state
+const assistantConfig = computed(() => {
+  // Check if the last message is currently streaming
+  const lastMessage = messages.value[messages.value.length - 1]
+  const isStreaming = status.value === 'streaming' &&
+    lastMessage?.role === 'assistant' &&
+    lastMessage?.id !== null &&
+    lastFinishedMessageId.value !== lastMessage?.id
+
+  return {
+    actions: isStreaming ? [] : [
+      { label: 'Copy', icon: copied.value ? 'i-lucide-copy-check' : 'i-lucide-copy', onClick: copy },
+      { label: 'Canvas', icon: 'i-lucide-canvas', onClick: showInCanvas }
+    ]
+  }
+})
+
 function extractTextPartsForTemplate(msg: any) {
   const provided = msg?.textParts
   if (Array.isArray(provided)) return provided
@@ -477,10 +494,7 @@ watch(
             <UChatMessages
               :messages="messages"
               :status="status"
-              :assistant="{ actions: [
-                { label: 'Copy', icon: copied ? 'i-lucide-copy-check' : 'i-lucide-copy', onClick: copy },
-                { label: 'Canvas', icon: 'i-lucide-canvas', onClick: showInCanvas }
-              ] }"
+              :assistant="assistantConfig"
               class="lg:pt-(--ui-header-height) pb-4 sm:pb-6"
               :spacing-offset="160"
             >
@@ -488,7 +502,7 @@ watch(
                 <!-- Training URL UI (compact) -->
                 <div v-if="extractTrainingUrlFromMessage(message)" class="mb-2">
                   <div class="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-3 py-2">
-                    <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
                       <div class="text-xs">
                         <span class="font-medium">Training URL</span>
                         <span class="text-muted-foreground ml-2">{{ (extractTrainingUrlFromMessage(message) || '').replace(/^https?:\/\//, '').split('/')[0] }}</span>

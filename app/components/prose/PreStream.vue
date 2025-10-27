@@ -7,7 +7,6 @@ const props = defineProps<{
   code: string
   language: string
   class?: string
-  meta?: string
 }>()
 const trimmedCode = computed(() => {
   return props.code.trim().replace(/`+$/, '')

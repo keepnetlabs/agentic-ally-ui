@@ -7,7 +7,6 @@ const { isCanvasVisible, hideCanvas } = useCanvas()
 const route = useRoute()
 const toast = useToast()
 const overlay = useOverlay()
-const { loggedIn, openInPopup } = useUserSession()
 
 const open = ref(false)
 
@@ -35,12 +34,6 @@ onNuxtReady(async () => {
     // prefetch the chat and let the browser cache it
     await $fetch(`/api/chats/${chat.id}`)
   }
-})
-
-watch(loggedIn, () => {
-  refreshChats()
-
-  open.value = false
 })
 
 watch(isCanvasVisible, (newValue) => {
@@ -165,10 +158,6 @@ defineShortcuts({
             </div>
           </template>
         </UNavigationMenu>
-      </template>
-
-      <template #footer="{ collapsed }">
-        <UserMenu v-if="loggedIn" :collapsed="collapsed" />
       </template>
     </UDashboardSidebar>
 

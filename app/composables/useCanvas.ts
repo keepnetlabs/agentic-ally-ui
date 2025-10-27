@@ -1,4 +1,4 @@
-import { ref, reactive, readonly } from 'vue'
+import { ref, readonly } from 'vue'
 
 export interface CanvasContent {
   type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url'
@@ -39,57 +39,6 @@ export const useCanvas = () => {
     canvasContent.value = null
   }
 
-  // Email preview helper
-  const showEmailPreview = (emailData: {
-    from?: string
-    to?: string
-    subject?: string
-    body: string
-  }) => {
-    updateCanvasContent({
-      type: 'email',
-      ...emailData
-    })
-  }
-
-  // Code preview helper
-  const showCodePreview = (codeData: {
-    code: string
-    filename?: string
-    language?: string
-  }) => {
-    updateCanvasContent({
-      type: 'code',
-      ...codeData
-    })
-  }
-
-  // HTML preview helper
-  const showHTMLPreview = (htmlData: {
-    html: string
-    title?: string
-  }) => {
-    updateCanvasContent({
-      type: 'html',
-      ...htmlData
-    })
-  }
-
-  // Generic preview helper
-  const showPreview = (previewData: {
-    title?: string
-    content?: string
-    html?: string
-    type?: CanvasContent['type']
-  }) => {
-    updateCanvasContent({
-      type: previewData.type || 'preview',
-      title: previewData.title,
-      content: previewData.content,
-      html: previewData.html
-    })
-  }
-
   return {
     // State
     isCanvasVisible: readonly(isCanvasVisible),
@@ -100,57 +49,6 @@ export const useCanvas = () => {
     hideCanvas,
     toggleCanvas,
     updateCanvasContent,
-    clearCanvasContent,
-
-    // Helpers
-    showEmailPreview,
-    showCodePreview,
-    showHTMLPreview,
-    showPreview
+    clearCanvasContent
   }
-}
-
-// Global canvas event bus
-export const canvasEventBus = {
-  showEmail: (emailData: {
-    from?: string
-    to?: string
-    subject?: string
-    body: string
-  }) => {
-    const { showEmailPreview } = useCanvas()
-    showEmailPreview(emailData)
-  },
-
-  showCode: (codeData: {
-    code: string
-    filename?: string
-    language?: string
-  }) => {
-    const { showCodePreview } = useCanvas()
-    showCodePreview(codeData)
-  },
-
-  showHTML: (htmlData: {
-    html: string
-    title?: string
-  }) => {
-    const { showHTMLPreview } = useCanvas()
-    showHTMLPreview(htmlData)
-  },
-
-  showPreview: (previewData: {
-    title?: string
-    content?: string
-    html?: string
-    type?: CanvasContent['type']
-  }) => {
-    const { showPreview } = useCanvas()
-    showPreview(previewData)
-  }
-}
-
-// Make it available globally
-if (typeof window !== 'undefined') {
-  (window as any).__canvasEventBus = canvasEventBus
 }
