@@ -572,6 +572,10 @@ watch(
               v-model="input"
               :error="error"
               variant="subtle"
+              autocomplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               :class="[
                 'sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10',
                 input.length === 0 ? 'force-default-height' : ''

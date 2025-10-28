@@ -79,6 +79,10 @@ const quickChats = [
           :status="loading ? 'streaming' : 'ready'"
           class="[view-transition-name:chat-prompt]"
           variant="subtle"
+          autocomplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
           @submit="onSubmit"
         >
           <UChatPromptSubmit color="neutral" :status="loading ? 'streaming' : 'ready'" />
