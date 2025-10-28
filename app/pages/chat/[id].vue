@@ -47,11 +47,35 @@ if (!chat.value) {
 
 const input = ref('')
 
+// Parse model value into provider and model
+const getModelConfig = () => {
+  const modelObj = model.value as any
+  // Handle both string and object values
+  const value = typeof modelObj === 'string' ? modelObj : modelObj?.value || ''
+
+  if (value.startsWith('WORKERS_AI_')) {
+    return {
+      modelProvider: 'WORKERS_AI',
+      model: value
+    }
+  } else if (value.startsWith('OPENAI_')) {
+    return {
+      modelProvider: 'OPENAI',
+      model: value
+    }
+  }
+
+  return {
+    modelProvider: 'WORKERS_AI',
+    model: 'WORKERS_AI_GPT_OSS_120B'
+  }
+}
+
 const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
     api: `/api/chats/${chatId}`,
-    body: { model: model.value, conversationId: chatId }
+    body: { ...getModelConfig(), conversationId: chatId }
   }),
   messages: (chat.value?.messages ?? []).map((m: any) => ({
     id: m.id,
