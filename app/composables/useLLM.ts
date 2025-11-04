@@ -28,10 +28,20 @@ export function useLLM() {
     {
       label: 'GPT-4o mini',
       value: "OPENAI_GPT_4O_MINI"
+    },
+    {
+      label: 'Gemini 2.5 Pro',
+      value: "GOOGLE_GEMINI_2_5_PRO"
+    },
+    {
+      label: 'Gemini 2.5 Flash',
+      value: "GOOGLE_GEMINI_2_5_FLASH"
     }
   ]
 
-  const model = useCookie<string>('llm-model', { default: () => "WORKERS_AI_GPT_OSS_120B" })
+  const model = useCookie<Model>('llm-model', {
+    default: () => models[0] as Model
+  })
 
   return {
     models,

@@ -10,6 +10,9 @@ const overlay = useOverlay()
 
 const open = ref(false)
 
+// Get sessionId from URL query (passed by parent iframe)
+const sessionId = route.query.sessionId as string
+
 const deleteModal = overlay.create(LazyModalConfirm, {
   props: {
     title: 'Delete chat',
@@ -17,7 +20,9 @@ const deleteModal = overlay.create(LazyModalConfirm, {
   }
 })
 
-const { data: chats, refresh: refreshChats } = await useFetch('/api/chats', {
+const chatsUrl = sessionId ? `/api/chats?sessionId=${sessionId}` : '/api/chats'
+
+const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   key: 'chats',
   transform: data => data.map(chat => ({
     id: chat.id,
@@ -32,7 +37,8 @@ onNuxtReady(async () => {
   const first10 = (chats.value || []).slice(0, 10)
   for (const chat of first10) {
     // prefetch the chat and let the browser cache it
-    await $fetch(`/api/chats/${chat.id}`)
+    const prefetchUrl = sessionId ? `/api/chats/${chat.id}?sessionId=${sessionId}` : `/api/chats/${chat.id}`
+    await $fetch(prefetchUrl)
   }
 })
 
@@ -76,7 +82,8 @@ async function deleteChat(id: string) {
     return
   }
 
-  await $fetch(`/api/chats/${id}`, { method: 'DELETE' })
+  const deleteUrl = sessionId ? `/api/chats/${id}?sessionId=${sessionId}` : `/api/chats/${id}`
+  await $fetch(deleteUrl, { method: 'DELETE' })
 
   toast.add({
     title: 'Chat deleted',

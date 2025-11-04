@@ -34,8 +34,13 @@ const { isCanvasVisible, toggleCanvas, hideCanvas, clearCanvasContent } = useCan
 
 const chatId = String(route.params.id)
 
+// Get sessionId from URL query (passed by parent iframe)
+const sessionId = route.query.sessionId as string
+
+const chatUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
+
 // @ts-ignore - Nuxt allows top-level await in script setup
-const { data: chat } = await useFetch<ServerChat>(`/api/chats/${chatId}`, {
+const { data: chat } = await useFetch<ServerChat>(chatUrl, {
   key: `chat-${chatId}`,
   credentials: 'include'  // Allow cookies in cross-origin requests
 })
@@ -63,6 +68,11 @@ const getModelConfig = () => {
       modelProvider: 'OPENAI',
       model: value
     }
+  } else if (value.startsWith('GOOGLE_GEMINI_')) {
+    return {
+      modelProvider: 'GOOGLE',
+      model: value
+    }
   }
 
   return {
@@ -71,10 +81,12 @@ const getModelConfig = () => {
   }
 }
 
+const streamUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
+
 const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
-    api: `/api/chats/${chatId}`,
+    api: streamUrl,
     body: { ...getModelConfig(), conversationId: chatId }
   }),
   messages: (chat.value?.messages ?? []).map((m: any) => ({
@@ -104,7 +116,8 @@ const chatClient = new Chat({
       })
       
       try {
-        const result = await $fetch(`/api/chats/${chatId}/messages`, {
+        const messagesUrl = sessionId ? `/api/chats/${chatId}/messages?sessionId=${sessionId}` : `/api/chats/${chatId}/messages`
+        const result = await $fetch(messagesUrl, {
           method: 'POST',
           body: {
             id: message.id,

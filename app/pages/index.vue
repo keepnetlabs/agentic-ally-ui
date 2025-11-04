@@ -1,14 +1,19 @@
 <script setup lang="ts">
 const input = ref('')
 const loading = ref(false)
+const route = useRoute()
 
 const { model } = useLLM()
+
+// Get sessionId from URL query (passed by parent iframe)
+const sessionId = route.query.sessionId as string
 
 async function createChat(prompt: string) {
   loading.value = true
   try {
     console.log('Creating chat with prompt:', prompt)
-    const chat = await $fetch('/api/chats', {
+    const url = sessionId ? `/api/chats?sessionId=${sessionId}` : '/api/chats'
+    const chat = await $fetch(url, {
       method: 'POST',
       body: { prompt },
       credentials: 'include'

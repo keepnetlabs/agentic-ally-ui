@@ -1,11 +1,15 @@
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event)
+  const query = getQuery(event)
 
   const { prompt } = await readBody(event)
   const db = useDrizzle()
 
+  // Get sessionId from URL query parameter (for iframe usage)
+  const querySessionId = query.sessionId as string
+
   // Fallback user ID if session is empty (for iframe access)
-  const userId = (session as any).user?.id || session?.id || `guest-${Date.now()}`
+  const userId = (session as any).user?.id || querySessionId || 'guest-session'
 
   // Create a new chat with the first user message
   const chat = await db.insert(tables.chats).values({

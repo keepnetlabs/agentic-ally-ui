@@ -5,11 +5,15 @@ export default defineEventHandler(async (event) => {
   console.log('Messages POST endpoint called')
 
   const session = await getUserSession(event)
+  const query = getQuery(event)
   const { id } = getRouterParams(event)
   const body = await readBody(event)
 
+  // Get sessionId from URL query parameter (for iframe usage)
+  const querySessionId = query.sessionId as string
+
   // Fallback user ID if session is empty (for iframe access)
-  const userId = (session as any).user?.id || session?.id || 'guest-session'
+  const userId = (session as any).user?.id || querySessionId || 'guest-session'
 
   console.log('Request data:', { chatId: id, body, userId })
 
