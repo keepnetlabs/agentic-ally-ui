@@ -23,7 +23,8 @@ export default defineEventHandler(async (event) => {
   const querySessionId = query.sessionId as string
 
   // Fallback user ID if session is empty (for iframe access)
-  const userId = (session as any).user?.id || querySessionId || 'guest-session'
+  // Priority: querySessionId > session.user.id > 'guest-session'
+  const userId = querySessionId || (session as any).user?.id || 'guest-session'
 
   const chat = await db.query.chats.findFirst({
     where: (chat, { eq }) => {

@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
   const querySessionId = query.sessionId as string
 
   // Fallback user ID if session is empty (for iframe access)
-  const userId = (session as any).user?.id || querySessionId || 'guest-session'
+  // Priority: querySessionId > session.user.id > 'guest-session'
+  const userId = querySessionId || (session as any).user?.id || 'guest-session'
 
   const chat = await useDrizzle().query.chats.findFirst({
     where: (chat, { eq }) => and(eq(chat.id, id as string), eq(chat.userId, userId)),
@@ -16,6 +17,10 @@ export default defineEventHandler(async (event) => {
       messages: true
     }
   })
+
+  if (!chat) {
+    throw createError({ statusCode: 404, statusMessage: 'Chat not found' })
+  }
 
   return chat
 })

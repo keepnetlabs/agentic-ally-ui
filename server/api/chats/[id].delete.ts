@@ -10,7 +10,8 @@ export default defineEventHandler(async (event) => {
   const querySessionId = query.sessionId as string
 
   // Fallback user ID if session is empty (for iframe access)
-  const userId = (session as any).user?.id || querySessionId || 'guest-session'
+  // Priority: querySessionId > session.user.id > 'guest-session'
+  const userId = querySessionId || (session as any).user?.id || 'guest-session'
 
   return await db.delete(tables.chats)
     .where(and(eq(tables.chats.id, id as string), eq(tables.chats.userId, userId)))
