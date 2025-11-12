@@ -28,7 +28,10 @@ async function createChat(prompt: string) {
     }
 
     refreshNuxtData('chats')
-    navigateTo(`/chat/${chat.id}`)
+    const chatUrl = sessionId
+      ? `/chat/${chat.id}?sessionId=${sessionId}`
+      : `/chat/${chat.id}`
+    navigateTo(chatUrl)
   } catch(e) {
     console.error('Error creating chat:', e)
   } finally {

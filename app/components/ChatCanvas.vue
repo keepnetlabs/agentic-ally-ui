@@ -139,7 +139,7 @@
               ]">
                 <iframe
                   ref="iframeRef"
-                  :src="content.url"
+                  :src="iframeUrl"
                   class="block w-full h-full border-0"
                   loading="lazy"
                   allowfullscreen
@@ -195,8 +195,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
+import { useRoute } from 'vue-router'
 
 interface CanvasContent {
   type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url'
@@ -217,8 +218,33 @@ const emit = defineEmits<{
   clear: []
 }>()
 
+const route = useRoute()
 const content = ref<CanvasContent | null>(null)
 const { copy } = useClipboard()
+
+// Build iframe URL with accessToken and baseURL from route query
+const iframeUrl = computed(() => {
+  if (!content.value?.url) return ''
+
+  try {
+    const url = new URL(content.value.url)
+    const accessToken = route.query.accessToken as string
+    const baseURL = route.query.baseURL as string
+
+    if (accessToken) {
+      url.searchParams.append('accessToken', accessToken)
+    }
+
+    if (baseURL) {
+      url.searchParams.append('baseURL', baseURL)
+    }
+
+    return url.toString()
+  } catch {
+    // If URL parsing fails, return original URL
+    return content.value.url
+  }
+})
 
 // URL iframe handling
 const iframeRef = ref()
@@ -292,10 +318,10 @@ const onIframeError = () => {
 }
 
 const refreshIframe = () => {
-  if (iframeRef.value && content.value?.url) {
+  if (iframeRef.value && iframeUrl.value) {
     iframeLoading.value = true
     iframeError.value = false
-    const currentUrl = content.value.url
+    const currentUrl = iframeUrl.value
     iframeRef.value.src = ''
     setTimeout(() => {
       if (iframeRef.value) {
@@ -306,8 +332,8 @@ const refreshIframe = () => {
 }
 
 const openInNewTab = () => {
-  if (content.value?.url) {
-    window.open(content.value.url, '_blank', 'noopener,noreferrer')
+  if (iframeUrl.value) {
+    window.open(iframeUrl.value, '_blank', 'noopener,noreferrer')
   }
 }
 
