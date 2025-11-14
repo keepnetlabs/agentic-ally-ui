@@ -28,9 +28,17 @@ async function createChat(prompt: string) {
     }
 
     refreshNuxtData('chats')
-    const chatUrl = sessionId
-      ? `/chat/${chat.id}?sessionId=${sessionId}`
-      : `/chat/${chat.id}`
+
+    // Build chat URL with all query parameters (sessionId, accessToken, baseApiUrl)
+    const params = new URLSearchParams()
+    if (sessionId) params.append('sessionId', sessionId)
+    const accessToken = route.query.accessToken as string
+    if (accessToken) params.append('accessToken', accessToken)
+    const baseApiUrl = route.query.baseApiUrl as string
+    if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
+
+    const queryString = params.toString()
+    const chatUrl = `/chat/${chat.id}${queryString ? '?' + queryString : ''}`
     navigateTo(chatUrl)
   } catch(e) {
     console.error('Error creating chat:', e)

@@ -27,7 +27,7 @@ const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   transform: data => data.map(chat => ({
     id: chat.id,
     label: chat.title || 'Untitled',
-    to: `/chat/${chat.id}`,
+    to: sessionId ? `/chat/${chat.id}?sessionId=${sessionId}` : `/chat/${chat.id}`,
     icon: 'i-lucide-message-circle',
     createdAt: chat.createdAt
   }))

@@ -222,21 +222,21 @@ const route = useRoute()
 const content = ref<CanvasContent | null>(null)
 const { copy } = useClipboard()
 
-// Build iframe URL with accessToken and baseURL from route query
+// Build iframe URL with accessToken and baseApiUrl from route query
 const iframeUrl = computed(() => {
   if (!content.value?.url) return ''
 
   try {
     const url = new URL(content.value.url)
     const accessToken = route.query.accessToken as string
-    const baseURL = route.query.baseURL as string
+    const baseApiUrl = route.query.baseApiUrl as string
 
     if (accessToken) {
       url.searchParams.append('accessToken', accessToken)
     }
 
-    if (baseURL) {
-      url.searchParams.append('baseURL', baseURL)
+    if (baseApiUrl) {
+      url.searchParams.append('baseApiUrl', baseApiUrl)
     }
 
     return url.toString()
