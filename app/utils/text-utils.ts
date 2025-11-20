@@ -12,7 +12,21 @@ export function parseAIMessage(message: any): string {
         return ''
     }
 
+    const isReasoningPart = (p: any) => {
+        if (!p || typeof p !== 'object') return false
+        if (p.type === 'reasoning') return true
+        if (p.type === 'reasoning-start' || p.type === 'reasoning-delta' || p.type === 'reasoning-end') return true
+        // Provider fallbacks
+        if (p.channel === 'reasoning') return true
+        if (p.name === 'reasoning') return true
+        if (p.key === 'reasoning') return true
+        if (p.id === 'reasoning') return true
+        if (p?.metadata?.reasoning === true) return true
+        return false
+    }
+
     const text = message.parts
+        .filter((p: any) => !isReasoningPart(p))
         .map((p: any) => (typeof p === 'string' ? p : p?.text ?? ''))
         .join('')
 
@@ -33,6 +47,7 @@ export function parseAIReasoning(message: any): string {
     const isReasoningPart = (p: any) => {
         if (!p || typeof p !== 'object') return false
         if (p.type === 'reasoning') return true
+        if (p.type === 'reasoning-start' || p.type === 'reasoning-delta' || p.type === 'reasoning-end') return true
         // Provider fallbacks
         if (p.channel === 'reasoning') return true
         if (p.name === 'reasoning') return true
@@ -44,7 +59,7 @@ export function parseAIReasoning(message: any): string {
 
     const reasoningText = message.parts
         .filter((p: any) => isReasoningPart(p))
-        .map((p: any) => (typeof p === 'string' ? p : p?.text ?? ''))
+        .map((p: any) => (typeof p === 'string' ? p : p?.delta ?? p?.text ?? ''))
         .join('')
 
     return reasoningText

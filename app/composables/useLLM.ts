@@ -36,6 +36,10 @@ export function useLLM() {
     {
       label: 'Gemini 2.5 Flash',
       value: "GOOGLE_GEMINI_2_5_FLASH"
+    },
+    {
+      label: 'Gemini 3 Pro',
+      value: "GOOGLE_GEMINI_3_PRO"
     }
   ]
 

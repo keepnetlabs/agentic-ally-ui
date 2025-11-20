@@ -13,6 +13,21 @@ const open = ref(false)
 // Get sessionId from URL query (passed by parent iframe)
 const sessionId = route.query.sessionId as string
 
+// Build home URL with all params from route query
+const homeUrl = computed(() => {
+  const params = new URLSearchParams()
+  if (sessionId) params.append('sessionId', sessionId)
+
+  const accessToken = route.query.accessToken as string
+  const baseApiUrl = route.query.baseApiUrl as string
+
+  if (accessToken) params.append('accessToken', accessToken)
+  if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
+
+  const queryString = params.toString()
+  return `/${queryString ? '?' + queryString : ''}`
+})
+
 const deleteModal = overlay.create(LazyModalConfirm, {
   props: {
     title: 'Delete chat',
@@ -24,13 +39,27 @@ const chatsUrl = sessionId ? `/api/chats?sessionId=${sessionId}` : '/api/chats'
 
 const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   key: 'chats',
-  transform: data => data.map(chat => ({
-    id: chat.id,
-    label: chat.title || 'Untitled',
-    to: sessionId ? `/chat/${chat.id}?sessionId=${sessionId}` : `/chat/${chat.id}`,
-    icon: 'i-lucide-message-circle',
-    createdAt: chat.createdAt
-  }))
+  transform: data => data.map(chat => {
+    // Build URL with route query params
+    const params = new URLSearchParams()
+    if (sessionId) params.append('sessionId', sessionId)
+
+    const accessToken = route.query.accessToken as string
+    const baseApiUrl = route.query.baseApiUrl as string
+
+    if (accessToken) params.append('accessToken', accessToken)
+    if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
+
+    const queryString = params.toString()
+
+    return {
+      id: chat.id,
+      label: chat.title || 'Untitled',
+      to: `/chat/${chat.id}${queryString ? '?' + queryString : ''}`,
+      icon: 'i-lucide-message-circle',
+      createdAt: chat.createdAt
+    }
+  })
 })
 
 onNuxtReady(async () => {
@@ -75,6 +104,19 @@ const items = computed(() => groups.value?.flatMap((group) => {
   }))]
 }))
 
+// Search items with homeUrl for "New chat"
+const searchItems = computed(() => [{
+  id: 'links',
+  items: [{
+    label: 'New chat',
+    to: homeUrl.value,
+    icon: 'i-lucide-square-pen'
+  }]
+}, ...groups.value?.map((group) => ({
+  id: group.label.toLowerCase(),
+  items: group.items
+})) || []])
+
 async function deleteChat(id: string) {
   const instance = deleteModal.open()
   const result = await instance.result
@@ -94,13 +136,13 @@ async function deleteChat(id: string) {
   refreshChats()
 
   if (route.params.id === id) {
-    navigateTo('/')
+    navigateTo(homeUrl.value)
   }
 }
 
 defineShortcuts({
   c: () => {
-    navigateTo('/')
+    navigateTo(homeUrl.value)
   }
 })
 </script>
@@ -117,7 +159,7 @@ defineShortcuts({
       class="bg-elevated/50"
     >
       <template #header="{ collapsed }">
-        <NuxtLink to="/" class="flex items-center gap-0.5">
+        <NuxtLink :to="homeUrl" class="flex items-center gap-0.5">
           <Logo class="h-8 w-auto shrink-0" />
           <span v-if="!collapsed" class="text-[15px] ml-2 inline-block font-bold text-highlighted">Agentic HRM</span>
         </NuxtLink>
@@ -134,7 +176,7 @@ defineShortcuts({
             v-bind="collapsed ? { icon: 'i-lucide-plus' } : { label: 'New chat' }"
             variant="soft"
             block
-            to="/"
+            :to="homeUrl"
             @click="open = false"
           />
 
@@ -170,14 +212,7 @@ defineShortcuts({
 
     <UDashboardSearch
       placeholder="Search chats..."
-      :groups="[{
-        id: 'links',
-        items: [{
-          label: 'New chat',
-          to: '/',
-          icon: 'i-lucide-square-pen'
-        }]
-      }, ...groups]"
+      :groups="searchItems"
     />
 
     <slot />

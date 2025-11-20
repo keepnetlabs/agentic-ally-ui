@@ -209,7 +209,17 @@ const error = computed(() => chatClient.error)
 const lastFinishedMessageId = ref<string | null>(null)
 
 function handleSubmit() {
-  if (!input.value || status.value === 'streaming') return
+  if (!input.value) return
+  
+  // Check if streaming is actually finished (text-end received) even if status hasn't updated yet
+  const lastMessage = messages.value[messages.value.length - 1]
+  const isActuallyStreaming = status.value === 'streaming' && 
+    lastMessage?.role === 'assistant' && 
+    lastMessage?.id && 
+    lastFinishedMessageId.value !== lastMessage?.id
+  
+  if (isActuallyStreaming) return
+  
   chatClient.sendMessage({ text: input.value })
   input.value = ''
 }
@@ -570,11 +580,26 @@ watch(
                   </div>
                 </div>
 
+                <!-- Reasoning (shown above content, also during streaming) -->
+                <div v-if="message.reasoning" class="mb-2">
+                  <UCollapsible default-open class="text-xs">
+                    <template #default>
+                      <UButton variant="ghost" size="xs" class="text-muted-foreground ml-0 pl-0">
+                        <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mr-2" />
+                        Reasoning
+                      </UButton>
+                    </template>
+                    <template #content>
+                      <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground pt-2">{{ message.reasoning }}</pre>
+                    </template>
+                  </UCollapsible>
+                </div>
+
                 <!-- Streaming: show thinking indicator -->
                 <div v-if="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id">
                   <div class="flex items-start gap-2 text-xs text-muted-foreground">
-                    <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mt-0.5" />
-                    <span>Thinking…</span>
+                    <UIcon name="i-lucide-loader-2" class="w-3.5 h-3.5 mt-0.5 animate-spin" />
+                    <span>Thinking...</span>
                   </div>
                 </div>
 
@@ -587,20 +612,6 @@ watch(
                     :components="components"
                     :parser-options="{ highlight: false }"
                   />
-                </div>
-
-                <div v-if="message.reasoning && !(status === 'streaming' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id)" class="mt-2">
-                  <UCollapsible class="text-xs">
-                    <template #default>
-                      <UButton variant="ghost" size="xs" class="text-muted-foreground">
-                        <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mr-2" />
-                        Reasoning
-                      </UButton>
-                    </template>
-                    <template #content>
-                      <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground pt-2">{{ message.reasoning }}</pre>
-                    </template>
-                  </UCollapsible>
                 </div>
               </template>
             </UChatMessages>
