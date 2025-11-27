@@ -82,12 +82,22 @@ const getModelConfig = () => {
 }
 
 const streamUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
+const accessToken = route.query.accessToken as string
 
 const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
     api: streamUrl,
-    body: { ...getModelConfig(), conversationId: chatId }
+    body: { ...getModelConfig(), conversationId: chatId },
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      return fetch(input, {
+        ...init,
+        headers: {
+          ...(init?.headers || {}),
+          ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {})
+        }
+      })
+    }
   }),
   messages: (chat.value?.messages ?? []).map((m: any) => ({
     id: m.id,
@@ -123,6 +133,9 @@ const chatClient = new Chat({
             id: message.id,
             role: 'assistant',
             content: content
+          },
+          headers: {
+            ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {})
           }
         })
         console.log('AI message saved successfully:', result)

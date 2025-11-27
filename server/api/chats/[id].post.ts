@@ -53,10 +53,12 @@ export default defineEventHandler(async (event) => {
   console.log('FLEET_AGENT_URL', process.env.FLEET_AGENT_URL)
 
   try {
+    const accessToken = getHeader(event, 'x-agentic-ally-token')
     const response = await fetch(process.env.FLEET_AGENT_URL!, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {})
       },
       body: JSON.stringify({ modelProvider, model, messages, conversationId })
     })
