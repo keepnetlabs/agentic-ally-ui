@@ -10,17 +10,7 @@ import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
 import { parseAIMessage, parseAIReasoning, parseCanvasData } from '../../utils/text-utils'
-
-type ServerMessage = {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
-
-type ServerChat = {
-  id: string
-  messages: ServerMessage[]
-}
+import type { ServerChat } from '../../types/chat'
 
 const components = {
   pre: 'PreStream'
@@ -279,31 +269,94 @@ function hasDeltaParts(msg: any): boolean {
 
 function extractTrainingUrlFromMessage(msg: any): string | null {
   // Check parts first (streaming)
+  // Format: ::ui:canvas_open::${trainingUrl}\n
   const parts = extractTextPartsForTemplate(msg)
   for (const p of parts) {
     const text = p?.delta || p?.text || ''
+    // Match ::ui:canvas_open:: followed by URL (until newline, space, or end of string)
     const m = text.match(/::ui:canvas_open::([^\s\n]+)/)
-    if (m && m[1]) return m[1]
+    if (m && m[1]) {
+      // Trim any trailing whitespace/newline that might have been captured
+      return m[1].trim()
+    }
   }
   // Fallback: check final content
   const content = (msg?.content || '') + ''
   const mc = content.match(/::ui:canvas_open::([^\s\n]+)/)
-  return mc && mc[1] ? mc[1] : null
+  return mc && mc[1] ? mc[1].trim() : null
 }
 
-function getSanitizedTextPartsForTemplate(msg: any) {
-  return extractTextPartsForTemplate(msg).filter((p: any) => {
+// Helper function to decode base64 with UTF-8 support
+function base64ToUtf8(base64: string): string {
+  try {
+    // Decode base64 to binary string
+    const binary = atob(base64)
+    // Convert binary string to Uint8Array
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
+    // Decode UTF-8 bytes to string
+    return new TextDecoder('utf-8').decode(bytes)
+  } catch (error) {
+    console.error('Failed to decode base64 to UTF-8:', error)
+    throw error
+  }
+}
+
+function extractPhishingEmailFromMessage(msg: any): string | null {
+  // Return first email for backward compatibility
+  const emails = extractAllPhishingEmailsFromMessage(msg)
+  return emails.length > 0 ? emails[0] ?? null : null
+}
+
+function extractAllPhishingEmailsFromMessage(msg: any): string[] {
+  // Helper function to decode base64 and extract all email contents
+  const extractAndDecodeAll = (text: string): string[] => {
+    // Match all occurrences: ::ui:phishing_email::<base64>::/ui:phishing_email::
+    const matches = [...text.matchAll(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g)]
+    const decodedEmails: string[] = []
+    
+    for (const match of matches) {
+      if (!match || !match[1]) continue
+      
+      try {
+        // Decode base64 to get HTML content with UTF-8 support
+        const decoded = base64ToUtf8(match[1].trim())
+        decodedEmails.push(decoded)
+      } catch (error) {
+        console.error('Failed to decode base64 phishing email:', error)
+      }
+    }
+    
+    return decodedEmails
+  }
+  
+  // Check parts first (streaming)
+  const parts = extractTextPartsForTemplate(msg)
+  const allEmails: string[] = []
+  
+  for (const p of parts) {
     const text = p?.delta || p?.text || ''
-    return !/::ui:canvas_open::([^\s\n]+)/.test(text)
-  })
+    const decoded = extractAndDecodeAll(text)
+    allEmails.push(...decoded)
+  }
+  
+  // Fallback: check final content
+  if (allEmails.length === 0) {
+    const content = (msg?.content || '') + ''
+    return extractAndDecodeAll(content)
+  }
+  
+  // Remove duplicates (keep order)
+  return [...new Set(allEmails)]
 }
 
 function getSanitizedContentForTemplate(msg: any) {
   const content = (msg?.content || '') + ''
-  return content.replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
+  return content
+    .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
+    .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
 }
 
-function copy(e: MouseEvent, message: any) {
+function copy(e: MouseEvent | null, message: any) {
   clipboard.copy(message.content)
   copied.value = true
   setTimeout(() => {
@@ -314,61 +367,18 @@ function copy(e: MouseEvent, message: any) {
 function checkAndTriggerCanvas(message: any) {
   const content = message.content || parseAIMessage(message)
   if (typeof content === 'string') {
-    
-    // 1. Check for TrainingUrl: format (Primary)
-    const trainingUrlMatch = content.match(/TrainingUrl:\s*(https?:\/\/[^\s\n]+)/i)
-    if (trainingUrlMatch) {
-      const capturedUrl = trainingUrlMatch[1]
-      if (!capturedUrl) return
-      const url = capturedUrl
-      
+    // Only open canvas if ::ui:canvas_open:: tag is present
+    const canvasUrl = extractTrainingUrlFromMessage(message)
+    if (canvasUrl) {
       // Extract title if provided
       const titleMatch = content.match(/Title:\s*([^\n]+)/i)
-      const title = titleMatch ? titleMatch[1] : `Training: ${new URL(url).hostname}`
+      const title = titleMatch ? titleMatch[1] : `Training: ${new URL(canvasUrl).hostname}`
       
       canvasRef.value?.updateContent({
         type: 'url',
-        url: url,
+        url: canvasUrl,
         title: title
       })
-      return
-    }
-
-    // 2. Fallback: SDK standard canvas data
-    const canvasData = parseCanvasData(message)
-    if (canvasData && canvasData.url) {
-      canvasRef.value?.updateContent({
-        type: 'url',
-        url: canvasData.url,
-        title: canvasData.title || `Website: ${new URL(canvasData.url).hostname}`
-      })
-      return
-    }
-
-    // 3. Fallback: Auto-detect URLs
-    const urlRegex = /(https?:\/\/[^\s]+)/gi
-    const urls = content.match(urlRegex)
-    
-    if (urls && urls.length > 0) {
-      const url = urls[0]
-      canvasRef.value?.updateContent({
-        type: 'url',
-        url: url,
-        title: `Website: ${new URL(url).hostname}`
-      })
-      return
-    }
-    
-    // 4. Fallback: Manual tags
-    if (content.includes('[CANVAS:URL]') || content.includes('[CANVAS]')) {
-      const urlMatch = content.match(/(https?:\/\/[^\s]+)/)
-      if (urlMatch) {
-        canvasRef.value?.updateContent({
-          type: 'url',
-          url: urlMatch[0],
-          title: `Website: ${new URL(urlMatch[0]).hostname}`
-        })
-      }
     }
   }
 }
@@ -443,8 +453,9 @@ onMounted(() => {
   }
 })
 
-// Reactive UI signal handling for ::ui:canvas_open::<URL>
+// Reactive UI signal handling for ::ui:canvas_open::<URL> and ::ui:phishing_email::<HTML>
 const hasCanvasOpenedForCurrentMessage = ref(false)
+const hasEmailRenderedForCurrentMessage = ref(false)
 
 async function openCanvasWithUrl(url: string, title?: string) {
   if (!url) return
@@ -454,14 +465,31 @@ async function openCanvasWithUrl(url: string, title?: string) {
   }
   // Always update content, even if canvas is already visible
   await nextTick()
-  
+
   // Force reload by updating content with a timestamp to make it unique
   const urlWithTimestamp = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
-  
+
   canvasRef.value?.updateContent({
     type: 'url',
     url: urlWithTimestamp,
     title: title || `Training: ${new URL(url).hostname}`
+  })
+}
+
+async function openCanvasWithEmail(htmlContent: string) {
+  if (!htmlContent) return
+  if (!isCanvasVisible.value) {
+    toggleCanvas()
+    await nextTick()
+  }
+  await nextTick()
+
+  canvasRef.value?.updateContent({
+    type: 'email',
+    body: htmlContent,
+    from: 'Phishing Simulation <security@example.com>',
+    to: 'user@company.com',
+    subject: 'Security Awareness Training Email'
   })
 }
 
@@ -471,18 +499,38 @@ function getAllStreamText(message: any): string {
 }
 
 function maybeProcessUiSignals(message: any) {
-  if (!message || hasCanvasOpenedForCurrentMessage.value) return
+  if (!message) return
+  
   const allText = getAllStreamText(message)
-  const match = allText.match(/::ui:canvas_open::([^\s\n]+)/)
-  if (match && match[1]) {
-    hasCanvasOpenedForCurrentMessage.value = true
-    openCanvasWithUrl(match[1])
+  
+  // Check for canvas URL signal
+  if (!hasCanvasOpenedForCurrentMessage.value) {
+    const urlMatch = allText.match(/::ui:canvas_open::([^\s\n]+)/)
+    if (urlMatch && urlMatch[1]) {
+      hasCanvasOpenedForCurrentMessage.value = true
+      openCanvasWithUrl(urlMatch[1])
+    }
+  }
+  
+  // Check for phishing email signal
+  if (!hasEmailRenderedForCurrentMessage.value) {
+    const emailMatch = allText.match(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/)
+    if (emailMatch && emailMatch[1]) {
+      try {
+        const decodedHtml = base64ToUtf8(emailMatch[1].trim())
+        hasEmailRenderedForCurrentMessage.value = true
+        openCanvasWithEmail(decodedHtml)
+      } catch (error) {
+        console.error('Failed to decode base64 phishing email in stream:', error)
+      }
+    }
   }
 }
 
-// Reset the processed flag whenever the last message changes
+// Reset the processed flags whenever the last message changes
 watch(() => messages.value[messages.value.length - 1]?.id, () => {
   hasCanvasOpenedForCurrentMessage.value = false
+  hasEmailRenderedForCurrentMessage.value = false
 })
 
 // Close canvas when switching to different chat
@@ -491,6 +539,7 @@ watch(() => route.params.id, () => {
     hideCanvas()
   }
   hasCanvasOpenedForCurrentMessage.value = false
+  hasEmailRenderedForCurrentMessage.value = false
 })
 
 // Close canvas when chat data changes (new chat created)
@@ -499,6 +548,7 @@ watch(() => chat.value?.id, () => {
     hideCanvas()
   }
   hasCanvasOpenedForCurrentMessage.value = false
+  hasEmailRenderedForCurrentMessage.value = false
 })
 
 // Watch streaming progress and last message parts to detect the UI signal in near real-time
@@ -559,39 +609,27 @@ watch(
               :spacing-offset="160"
             >
               <template #content="{ message }">
-                <!-- Training URL UI (compact) -->
-                <div v-if="extractTrainingUrlFromMessage(message)" class="mb-2">
-                  <div class="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-3 py-2">
-                    <div class="flex items-center justify-between gap-3 flex-wrap">
-                      <div class="text-xs">
-                        <span class="font-medium">Training URL</span>
-                        <span class="text-muted-foreground ml-2">{{ (extractTrainingUrlFromMessage(message) || '').replace(/^https?:\/\//, '').split('/')[0] }}</span>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <UButton
-                          size="xs"
-                          variant="soft"
-                          :icon="isCanvasVisible ? 'i-lucide-refresh-cw' : 'i-lucide-external-link'"
-                          @click.stop="openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
-                        >
-                          {{ isCanvasVisible ? 'Reload' : 'Open' }}
-                        </UButton>
-                        <UButton
-                          size="xs"
-                          variant="ghost"
-                          :icon="isCanvasVisible ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
-                          @click.stop="isCanvasVisible ? hideCanvas() : openCanvasWithUrl(extractTrainingUrlFromMessage(message) || '')"
-                        />
-                        <UButton
-                          size="xs"
-                          variant="ghost"
-                          icon="i-lucide-copy"
-                          @click.stop="copy($event, message)"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <!-- Training URL UI -->
+                <TrainingUrlCard
+                  v-if="extractTrainingUrlFromMessage(message)"
+                  :url="extractTrainingUrlFromMessage(message) || ''"
+                  :is-canvas-visible="isCanvasVisible"
+                  @open="openCanvasWithUrl"
+                  @toggle="(url) => isCanvasVisible ? hideCanvas() : openCanvasWithUrl(url)"
+                  @copy="() => copy(null, message)"
+                />
+
+                <!-- Phishing Email UI - show all emails -->
+                <PhishingEmailCard
+                  v-for="(emailHtml, index) in extractAllPhishingEmailsFromMessage(message)"
+                  :key="index"
+                  :email-html="emailHtml"
+                  :index="index"
+                  :total-count="extractAllPhishingEmailsFromMessage(message).length"
+                  :is-canvas-visible="isCanvasVisible"
+                  @open="openCanvasWithEmail"
+                  @toggle="(emailHtml) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(emailHtml)"
+                />
 
                 <!-- Reasoning (shown above content, also during streaming) -->
                 <div v-if="message.reasoning" class="mb-2">

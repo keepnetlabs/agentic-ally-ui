@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const accessToken = getHeader(event, 'x-agentic-ally-token')
+    console.log('accessToken', accessToken)
     const response = await fetch(process.env.FLEET_AGENT_URL!, {
       method: 'POST',
       headers: {
@@ -184,7 +185,7 @@ export default defineEventHandler(async (event) => {
     })
 
     const encoded = upstream
-      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(new TextDecoderStream() as any)
       .pipeThrough(transform)
       .pipeThrough(new TextEncoderStream())
 
