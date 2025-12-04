@@ -689,7 +689,13 @@ watch(
               />
 
               <template #footer>
-                <ModelSelect v-model="model" />
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <ModelSelect v-model="model" />
+                  <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <UIcon name="i-lucide-shield-check" class="w-3.5 h-3.5" />
+                    <span>PII never shared</span>
+                  </div>
+                </div>
               </template>
             </UChatPrompt>
           </UContainer>
