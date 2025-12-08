@@ -185,6 +185,11 @@
           </div>
         </div>
 
+        <!-- Landing Page -->
+        <div v-else-if="content.type === 'landing-page' && content.landingPage" class="h-full overflow-auto">
+          <LandingPageCanvas :landing-page="content.landingPage" />
+        </div>
+
         <!-- Generic Content -->
         <div v-else class="prose dark:prose-invert max-w-none">
           <div v-html="content.html || content.content"></div>
@@ -198,9 +203,10 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useRoute } from 'vue-router'
+import type { LandingPage } from '../types/chat'
 
 interface CanvasContent {
-  type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url'
+  type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url' | 'landing-page'
   title?: string
   content?: string
   html?: string
@@ -211,6 +217,7 @@ interface CanvasContent {
   to?: string
   subject?: string
   url?: string
+  landingPage?: LandingPage
 }
 
 const emit = defineEmits<{

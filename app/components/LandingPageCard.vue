@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import type { PhishingEmail } from '../types/chat'
+import type { LandingPage } from '../types/chat'
 
 const props = defineProps<{
-  email: PhishingEmail
-  index?: number
-  totalCount?: number
+  landingPage: LandingPage
   isCanvasVisible: boolean
 }>()
 
 const emit = defineEmits<{
-  open: [email: PhishingEmail]
-  toggle: [email: PhishingEmail]
+  open: [landingPage: LandingPage]
+  toggle: [landingPage: LandingPage]
 }>()
 </script>
 
@@ -19,19 +17,16 @@ const emit = defineEmits<{
     <div class="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-3 py-2">
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div class="text-xs flex items-center gap-2">
-          <UIcon name="i-lucide-mail" class="w-3.5 h-3.5" />
-          <span class="font-medium">Phishing Email Preview</span>
-          <span v-if="totalCount && totalCount > 1" class="text-muted-foreground">
-            ({{ (index ?? 0) + 1 }}/{{ totalCount }})
-          </span>
-          <span class="text-muted-foreground ml-2">{{ email.method }}</span>
+          <UIcon name="i-lucide-layout" class="w-3.5 h-3.5" />
+          <span class="font-medium">Landing Page Preview</span>
+          <span class="text-muted-foreground ml-2">{{ landingPage.method }}</span>
         </div>
         <div class="flex items-center gap-2">
           <UButton
             size="xs"
             variant="soft"
             :icon="isCanvasVisible ? 'i-lucide-refresh-cw' : 'i-lucide-external-link'"
-            @click.stop="emit('open', email)"
+            @click.stop="emit('open', landingPage)"
           >
             {{ isCanvasVisible ? 'Reload' : 'Open' }}
           </UButton>
@@ -39,7 +34,7 @@ const emit = defineEmits<{
             size="xs"
             variant="ghost"
             :icon="isCanvasVisible ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
-            @click.stop="emit('toggle', email)"
+            @click.stop="emit('toggle', landingPage)"
           />
         </div>
       </div>

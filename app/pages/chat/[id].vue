@@ -6,10 +6,13 @@ import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 import { useToast } from '#imports'
 import { useLLM } from '../../composables/useLLM'
 import { useCanvas } from '../../composables/useCanvas'
+import { useCanvasTriggers } from '../../composables/useCanvasTriggers'
+import { useChatClient } from '../../composables/useChatClient'
 import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
-import { parseAIMessage, parseAIReasoning, parseCanvasData } from '../../utils/text-utils'
+import { parseAIMessage, parseAIReasoning } from '../../utils/text-utils'
+import { extractTrainingUrlFromMessage, extractAllPhishingEmailsFromMessage, extractLandingPageFromMessage, getSanitizedContentForTemplate, getAllStreamText, showInCanvas as showInCanvasUtil } from '../../utils/message-utils'
 import type { ServerChat } from '../../types/chat'
 
 const components = {
@@ -21,6 +24,7 @@ const toast = useToast()
 const clipboard = useClipboard()
 const { model } = useLLM()
 const { isCanvasVisible, toggleCanvas, hideCanvas, clearCanvasContent } = useCanvas()
+const { getModelConfig, createHandleSubmit, createStop, createReload, createMessages, createStatus, createErrorComputed } = useChatClient()
 
 const chatId = String(route.params.id)
 
@@ -42,35 +46,6 @@ if (!chat.value) {
 
 const input = ref('')
 
-// Parse model value into provider and model
-const getModelConfig = () => {
-  const modelObj = model.value as any
-  // Handle both string and object values
-  const value = typeof modelObj === 'string' ? modelObj : modelObj?.value || ''
-
-  if (value.startsWith('WORKERS_AI_')) {
-    return {
-      modelProvider: 'WORKERS_AI',
-      model: value
-    }
-  } else if (value.startsWith('OPENAI_')) {
-    return {
-      modelProvider: 'OPENAI',
-      model: value
-    }
-  } else if (value.startsWith('GOOGLE_GEMINI_')) {
-    return {
-      modelProvider: 'GOOGLE',
-      model: value
-    }
-  }
-
-  return {
-    modelProvider: 'WORKERS_AI',
-    model: 'WORKERS_AI_GPT_OSS_120B'
-  }
-}
-
 const streamUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
 const accessToken = route.query.accessToken as string
 
@@ -78,7 +53,7 @@ const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
     api: streamUrl,
-    body: { ...getModelConfig(), conversationId: chatId },
+    body: { ...getModelConfig(model.value), conversationId: chatId },
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       return fetch(input, {
         ...init,
@@ -186,57 +161,19 @@ const chatClient = new Chat({
   }
 })
 
-const messages = computed<any[]>(() =>
-  chatClient.messages.map((m: any) => {
-    const reasoning = parseAIReasoning(m)
-    if (reasoning && m.role === 'assistant') {
-      console.log('Message with reasoning:', {
-        id: m.id,
-        partsCount: m.parts?.length,
-        reasoningLength: reasoning.length,
-        parts: m.parts
-      })
-    }
-    return {
-      id: m.id,
-      role: m.role,
-      content: m.content || parseAIMessage(m),
-      parts: m.parts ?? [],
-      textParts: (m.parts ?? []).filter((p: any) => p && (p.type === 'text-delta' || p.type === 'text')),
-      reasoning
-    }
-  })
-)
-const status = computed(() => chatClient.status)
-const error = computed(() => chatClient.error)
+const messages = createMessages(chatClient, parseAIReasoning, parseAIMessage)
+const status = createStatus(chatClient)
+const error = createErrorComputed(chatClient)
 const lastFinishedMessageId = ref<string | null>(null)
 
-function handleSubmit() {
-  if (!input.value) return
-  
-  // Check if streaming is actually finished (text-end received) even if status hasn't updated yet
-  const lastMessage = messages.value[messages.value.length - 1]
-  const isActuallyStreaming = status.value === 'streaming' && 
-    lastMessage?.role === 'assistant' && 
-    lastMessage?.id && 
-    lastFinishedMessageId.value !== lastMessage?.id
-  
-  if (isActuallyStreaming) return
-  
-  chatClient.sendMessage({ text: input.value })
-  input.value = ''
-}
+const handleSubmit = createHandleSubmit(chatClient, input, messages, status, lastFinishedMessageId)
 
-function stop() {
-  // Chat class doesn't have stop method, need to use AbortController
-}
-
-function reload() {
-  chatClient.regenerate()
-}
+const stop = createStop()
+const reload = createReload(chatClient)
 
 const copied = ref(false)
 const canvasRef = ref()
+const { openCanvasWithUrl, openCanvasWithEmail, openCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, hideCanvas, messages, route, chat, status)
 
 // Compute assistant config with conditional actions based on streaming state
 const assistantConfig = computed(() => {
@@ -255,107 +192,6 @@ const assistantConfig = computed(() => {
   }
 })
 
-function extractTextPartsForTemplate(msg: any) {
-  const provided = msg?.textParts
-  if (Array.isArray(provided)) return provided
-  const parts = msg?.parts || []
-  return parts.filter((p: any) => p?.type === 'text-delta' || p?.type === 'text')
-}
-
-function hasDeltaParts(msg: any): boolean {
-  const parts = extractTextPartsForTemplate(msg)
-  return parts.some((p: any) => p?.type === 'text-delta' && (p?.delta || '') !== '')
-}
-
-function extractTrainingUrlFromMessage(msg: any): string | null {
-  // Check parts first (streaming)
-  // Format: ::ui:canvas_open::${trainingUrl}\n
-  const parts = extractTextPartsForTemplate(msg)
-  for (const p of parts) {
-    const text = p?.delta || p?.text || ''
-    // Match ::ui:canvas_open:: followed by URL (until newline, space, or end of string)
-    const m = text.match(/::ui:canvas_open::([^\s\n]+)/)
-    if (m && m[1]) {
-      // Trim any trailing whitespace/newline that might have been captured
-      return m[1].trim()
-    }
-  }
-  // Fallback: check final content
-  const content = (msg?.content || '') + ''
-  const mc = content.match(/::ui:canvas_open::([^\s\n]+)/)
-  return mc && mc[1] ? mc[1].trim() : null
-}
-
-// Helper function to decode base64 with UTF-8 support
-function base64ToUtf8(base64: string): string {
-  try {
-    // Decode base64 to binary string
-    const binary = atob(base64)
-    // Convert binary string to Uint8Array
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
-    // Decode UTF-8 bytes to string
-    return new TextDecoder('utf-8').decode(bytes)
-  } catch (error) {
-    console.error('Failed to decode base64 to UTF-8:', error)
-    throw error
-  }
-}
-
-function extractPhishingEmailFromMessage(msg: any): string | null {
-  // Return first email for backward compatibility
-  const emails = extractAllPhishingEmailsFromMessage(msg)
-  return emails.length > 0 ? emails[0] ?? null : null
-}
-
-function extractAllPhishingEmailsFromMessage(msg: any): string[] {
-  // Helper function to decode base64 and extract all email contents
-  const extractAndDecodeAll = (text: string): string[] => {
-    // Match all occurrences: ::ui:phishing_email::<base64>::/ui:phishing_email::
-    const matches = [...text.matchAll(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g)]
-    const decodedEmails: string[] = []
-    
-    for (const match of matches) {
-      if (!match || !match[1]) continue
-      
-      try {
-        // Decode base64 to get HTML content with UTF-8 support
-        const decoded = base64ToUtf8(match[1].trim())
-        decodedEmails.push(decoded)
-      } catch (error) {
-        console.error('Failed to decode base64 phishing email:', error)
-      }
-    }
-    
-    return decodedEmails
-  }
-  
-  // Check parts first (streaming)
-  const parts = extractTextPartsForTemplate(msg)
-  const allEmails: string[] = []
-  
-  for (const p of parts) {
-    const text = p?.delta || p?.text || ''
-    const decoded = extractAndDecodeAll(text)
-    allEmails.push(...decoded)
-  }
-  
-  // Fallback: check final content
-  if (allEmails.length === 0) {
-    const content = (msg?.content || '') + ''
-    return extractAndDecodeAll(content)
-  }
-  
-  // Remove duplicates (keep order)
-  return [...new Set(allEmails)]
-}
-
-function getSanitizedContentForTemplate(msg: any) {
-  const content = (msg?.content || '') + ''
-  return content
-    .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
-    .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
-}
-
 function copy(e: MouseEvent | null, message: any) {
   clipboard.copy(message.content)
   copied.value = true
@@ -364,82 +200,8 @@ function copy(e: MouseEvent | null, message: any) {
   }, 2000)
 }
 
-function checkAndTriggerCanvas(message: any) {
-  const content = message.content || parseAIMessage(message)
-  if (typeof content === 'string') {
-    // Only open canvas if ::ui:canvas_open:: tag is present
-    const canvasUrl = extractTrainingUrlFromMessage(message)
-    if (canvasUrl) {
-      // Extract title if provided
-      const titleMatch = content.match(/Title:\s*([^\n]+)/i)
-      const title = titleMatch ? titleMatch[1] : `Training: ${new URL(canvasUrl).hostname}`
-      
-      canvasRef.value?.updateContent({
-        type: 'url',
-        url: canvasUrl,
-        title: title
-      })
-    }
-  }
-}
-
-function showInCanvas(e: MouseEvent, message: any) {
-  const content = message.content
-  
-  // URL detection - check if content contains a URL
-  const urlRegex = /(https?:\/\/[^\s]+)/gi
-  const urls = content.match(urlRegex)
-  
-  if (urls && urls.length > 0) {
-    // URL content - show in iframe
-    const url = urls[0] // Use the first URL found
-    canvasRef.value?.updateContent({
-      type: 'url',
-      url: url,
-      title: `Website: ${new URL(url).hostname}`
-    })
-  } else if (content.includes('@') && (content.includes('Subject:') || content.includes('From:') || content.includes('To:'))) {
-    // Email content
-    const emailMatch = content.match(/From:\s*([^\n]+)\nTo:\s*([^\n]+)\nSubject:\s*([^\n]+)\n\n([\s\S]+)/i)
-    if (emailMatch) {
-      canvasRef.value?.updateContent({
-        type: 'email',
-        from: emailMatch[1],
-        to: emailMatch[2],
-        subject: emailMatch[3],
-        body: emailMatch[4]
-      })
-    } else {
-      // Simple email format
-      canvasRef.value?.updateContent({
-        type: 'email',
-        body: content
-      })
-    }
-  } else if (content.includes('```') || content.includes('function') || content.includes('const ') || content.includes('class ')) {
-    // Code content
-    const codeMatch = content.match(/```(\w+)?\n([\s\S]+?)\n```/g)
-    if (codeMatch) {
-      const firstMatch = codeMatch[0].match(/```(\w+)?\n([\s\S]+?)\n```/)
-      canvasRef.value?.updateContent({
-        type: 'code',
-        code: firstMatch[2],
-        filename: firstMatch[1] ? `code.${firstMatch[1]}` : 'code.txt'
-      })
-    } else {
-      canvasRef.value?.updateContent({
-        type: 'code',
-        code: content
-      })
-    }
-  } else {
-    // HTML or general preview
-    canvasRef.value?.updateContent({
-      type: 'preview',
-      title: 'AI Response',
-      html: content
-    })
-  }
+const showInCanvas = (e: MouseEvent, message: any) => {
+  showInCanvasUtil(canvasRef, message.content)
 }
 
 onMounted(() => {
@@ -452,122 +214,6 @@ onMounted(() => {
     reload()
   }
 })
-
-// Reactive UI signal handling for ::ui:canvas_open::<URL> and ::ui:phishing_email::<HTML>
-const hasCanvasOpenedForCurrentMessage = ref(false)
-const hasEmailRenderedForCurrentMessage = ref(false)
-
-async function openCanvasWithUrl(url: string, title?: string) {
-  if (!url) return
-  if (!isCanvasVisible.value) {
-    toggleCanvas()
-    await nextTick()
-  }
-  // Always update content, even if canvas is already visible
-  await nextTick()
-
-  // Force reload by updating content with a timestamp to make it unique
-  const urlWithTimestamp = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
-
-  canvasRef.value?.updateContent({
-    type: 'url',
-    url: urlWithTimestamp,
-    title: title || `Training: ${new URL(url).hostname}`
-  })
-}
-
-async function openCanvasWithEmail(htmlContent: string) {
-  if (!htmlContent) return
-  if (!isCanvasVisible.value) {
-    toggleCanvas()
-    await nextTick()
-  }
-  await nextTick()
-
-  canvasRef.value?.updateContent({
-    type: 'email',
-    body: htmlContent,
-    from: 'Phishing Simulation <security@example.com>',
-    to: 'user@company.com',
-    subject: 'Security Awareness Training Email'
-  })
-}
-
-function getAllStreamText(message: any): string {
-  const parts = extractTextPartsForTemplate(message) || []
-  return parts.map((p: any) => p?.delta || p?.text || '').join('')
-}
-
-function maybeProcessUiSignals(message: any) {
-  if (!message) return
-  
-  const allText = getAllStreamText(message)
-  
-  // Check for canvas URL signal
-  if (!hasCanvasOpenedForCurrentMessage.value) {
-    const urlMatch = allText.match(/::ui:canvas_open::([^\s\n]+)/)
-    if (urlMatch && urlMatch[1]) {
-      hasCanvasOpenedForCurrentMessage.value = true
-      openCanvasWithUrl(urlMatch[1])
-    }
-  }
-  
-  // Check for phishing email signal
-  if (!hasEmailRenderedForCurrentMessage.value) {
-    const emailMatch = allText.match(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/)
-    if (emailMatch && emailMatch[1]) {
-      try {
-        const decodedHtml = base64ToUtf8(emailMatch[1].trim())
-        hasEmailRenderedForCurrentMessage.value = true
-        openCanvasWithEmail(decodedHtml)
-      } catch (error) {
-        console.error('Failed to decode base64 phishing email in stream:', error)
-      }
-    }
-  }
-}
-
-// Reset the processed flags whenever the last message changes
-watch(() => messages.value[messages.value.length - 1]?.id, () => {
-  hasCanvasOpenedForCurrentMessage.value = false
-  hasEmailRenderedForCurrentMessage.value = false
-})
-
-// Close canvas when switching to different chat
-watch(() => route.params.id, () => {
-  if (isCanvasVisible.value) {
-    hideCanvas()
-  }
-  hasCanvasOpenedForCurrentMessage.value = false
-  hasEmailRenderedForCurrentMessage.value = false
-})
-
-// Close canvas when chat data changes (new chat created)
-watch(() => chat.value?.id, () => {
-  if (isCanvasVisible.value) {
-    hideCanvas()
-  }
-  hasCanvasOpenedForCurrentMessage.value = false
-  hasEmailRenderedForCurrentMessage.value = false
-})
-
-// Watch streaming progress and last message parts to detect the UI signal in near real-time
-watch(
-  () => ({
-    s: status.value,
-    lastId: messages.value[messages.value.length - 1]?.id,
-    lastRole: messages.value[messages.value.length - 1]?.role,
-    lastParts: messages.value[messages.value.length - 1]?.parts?.length
-  }),
-  () => {
-    const last = messages.value[messages.value.length - 1]
-    if (!last || last.role !== 'assistant') return
-    if (status.value === 'streaming') {
-      maybeProcessUiSignals(last)
-    }
-  },
-  { deep: true }
-)
 
 // Also watch the concatenated stream text to catch updates where parts length does not change
 watch(
@@ -609,6 +255,15 @@ watch(
               :spacing-offset="160"
             >
               <template #content="{ message }">
+                <!-- Landing Page UI -->
+                <LandingPageCard
+                  v-if="extractLandingPageFromMessage(message)"
+                  :landing-page="extractLandingPageFromMessage(message)"
+                  :is-canvas-visible="isCanvasVisible"
+                  @open="openCanvasWithLandingPage"
+                  @toggle="(landingPage) => isCanvasVisible ? hideCanvas() : openCanvasWithLandingPage(landingPage)"
+                />
+
                 <!-- Training URL UI -->
                 <TrainingUrlCard
                   v-if="extractTrainingUrlFromMessage(message)"
@@ -621,41 +276,26 @@ watch(
 
                 <!-- Phishing Email UI - show all emails -->
                 <PhishingEmailCard
-                  v-for="(emailHtml, index) in extractAllPhishingEmailsFromMessage(message)"
+                  v-for="(email, index) in extractAllPhishingEmailsFromMessage(message)"
                   :key="index"
-                  :email-html="emailHtml"
+                  :email="email"
                   :index="index"
                   :total-count="extractAllPhishingEmailsFromMessage(message).length"
                   :is-canvas-visible="isCanvasVisible"
-                  @open="openCanvasWithEmail"
-                  @toggle="(emailHtml) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(emailHtml)"
+                  @open="(email) => openCanvasWithEmail(email)"
+                  @toggle="(email) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(email)"
                 />
 
                 <!-- Reasoning (shown above content, also during streaming) -->
-                <div v-if="message.reasoning" class="mb-2">
-                  <UCollapsible default-open class="text-xs">
-                    <template #default>
-                      <UButton variant="ghost" size="xs" class="text-muted-foreground ml-0 pl-0">
-                        <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mr-2" />
-                        Reasoning
-                      </UButton>
-                    </template>
-                    <template #content>
-                      <pre class="whitespace-pre-wrap break-words text-xs text-muted-foreground pt-2">{{ message.reasoning }}</pre>
-                    </template>
-                  </UCollapsible>
-                </div>
+                <ReasoningSection :reasoning="message.reasoning" />
 
                 <!-- Streaming: show thinking indicator -->
-                <div v-if="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id">
-                  <div class="flex items-start gap-2 text-xs text-muted-foreground">
-                    <UIcon name="i-lucide-loader-2" class="w-3.5 h-3.5 mt-0.5 animate-spin" />
-                    <span>Thinking...</span>
-                  </div>
-                </div>
+                <StreamingIndicator 
+                  :is-streaming="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id"
+                />
 
                 <!-- Final content (non-streaming or non-last message) -->
-                <div v-else class="whitespace-pre-line">
+                <div v-if="!(status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id)" class="whitespace-pre-line">
                   <MDCCached
                     :value="getSanitizedContentForTemplate(message)"
                     :cache-key="message.id"

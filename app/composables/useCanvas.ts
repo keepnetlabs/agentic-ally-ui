@@ -1,7 +1,8 @@
 import { ref, readonly } from 'vue'
+import type { LandingPage } from '../types/chat'
 
 export interface CanvasContent {
-  type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url'
+  type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url' | 'landing-page'
   title?: string
   content?: string
   html?: string
@@ -12,6 +13,7 @@ export interface CanvasContent {
   to?: string
   subject?: string
   url?: string
+  landingPage?: LandingPage
 }
 
 const isCanvasVisible = ref(false)
