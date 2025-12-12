@@ -48,6 +48,7 @@ const input = ref('')
 
 const streamUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
 const accessToken = route.query.accessToken as string
+const companyId = route.query.companyId as string
 
 const chatClient = new Chat({
   id: chatId,
@@ -59,7 +60,8 @@ const chatClient = new Chat({
         ...init,
         headers: {
           ...(init?.headers || {}),
-          ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {})
+          ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
+          ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
         }
       })
     }
@@ -100,7 +102,8 @@ const chatClient = new Chat({
             content: content
           },
           headers: {
-            ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {})
+            ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
+            ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
           }
         })
         console.log('AI message saved successfully:', result)
