@@ -6,7 +6,7 @@ const props = defineProps<{
 
 <template>
   <div v-if="reasoning" class="mb-2">
-    <UCollapsible default-open class="text-xs">
+    <UCollapsible class="text-xs">
       <template #default>
         <UButton variant="ghost" size="xs" class="text-muted-foreground ml-0 pl-0">
           <UIcon name="i-lucide-brain" class="w-3.5 h-3.5 mr-2" />
