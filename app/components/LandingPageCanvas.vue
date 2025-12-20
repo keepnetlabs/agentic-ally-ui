@@ -16,7 +16,7 @@ const currentPage = computed(() => props.landingPage.pages[selectedPageIndex.val
 <template>
   <div class="h-full flex flex-col">
     <!-- Header -->
-    <div class="border-b border-gray-200 dark:border-gray-800 px-4 py-3 bg-gray-50 dark:bg-gray-900">
+    <div class="border-b border-gray-200 dark:border-gray-700 px-4 py-3" style="background-color: var(--bg-ui);">
       <div class="flex items-center justify-between">
         <div>
           <h3 class="font-medium text-sm">{{ landingPage.name || 'Landing Page' }}</h3>
@@ -26,7 +26,7 @@ const currentPage = computed(() => props.landingPage.pages[selectedPageIndex.val
     </div>
 
     <!-- Tabs for 2 pages -->
-    <div v-if="hasMultiplePages" class="border-b border-gray-200 dark:border-gray-800 px-4 py-2 bg-gray-50 dark:bg-gray-900">
+    <div v-if="hasMultiplePages" class="border-b border-gray-200 dark:border-gray-700 px-4 py-2" style="background-color: var(--bg-ui);">
       <div class="flex gap-2">
         <button
           v-for="(page, index) in landingPage.pages"
@@ -34,7 +34,7 @@ const currentPage = computed(() => props.landingPage.pages[selectedPageIndex.val
           @click="selectedPageIndex = index"
           class="px-3 py-1.5 text-sm rounded-md border transition-colors"
           :class="selectedPageIndex === index
-            ? 'bg-primary text-white border-primary'
+            ? 'bg-primary text-white border-primary dark:bg-black dark:text-white dark:border-white'
             : 'bg-transparent border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800'"
         >
           Page {{ index + 1 }}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// @ts-nocheck - Nuxt auto-imports are available at runtime
 const colorMode = useColorMode()
 
 const color = computed(() => colorMode.value === 'dark' ? '#1b1718' : 'white')
@@ -36,11 +37,39 @@ const accessDenied = ref(false)
 const siteOpened = ref(false)
 const siteUrl = ref('')
 
+// Gerçek aktif mode'u al (sadece 'dark' veya 'light')
+const getActiveMode = () => {
+  const mode = colorMode.value
+  // 'system' ise gerçek mode'u kontrol et
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  return mode === 'dark' ? 'dark' : 'light'
+}
+
+const sendColorModeToParent = () => {
+  if (window.parent !== window) {
+    window.parent.postMessage({
+      type: 'COLOR_MODE',
+      mode: getActiveMode()
+    }, '*')
+  }
+}
+
 onMounted(async () => {
   siteUrl.value = window.location.origin
   
   // İlk cookie set et
   $fetch('/api/ping').catch(() => {})
+  
+  // Color mode'u parent'a gönder (iframe içindeyse)
+  sendColorModeToParent()
+  
+  // System preference değiştiğinde de bildir
+  if (window.matchMedia) {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    mediaQuery.addEventListener('change', sendColorModeToParent)
+  }
   
   // Sadece Safari'de çalışsın
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
@@ -56,6 +85,11 @@ onMounted(async () => {
       console.log('Storage Access API not available')
     }
   }
+})
+
+// Color mode değiştiğinde parent'a bildir
+watch(colorMode, () => {
+  sendColorModeToParent()
 })
 
 async function requestSafariAccess() {

@@ -2,11 +2,19 @@
 const input = ref('')
 const loading = ref(false)
 const route = useRoute()
+const colorMode = useColorMode()
 
 const { model } = useLLM()
 
 // Get sessionId from URL query (passed by parent iframe)
 const sessionId = route.query.sessionId as string
+
+// Image based on color mode
+const imageUrl = computed(() => {
+  const isDark = colorMode.value === 'dark'
+  const imageId = isDark ? '3b1fa0ba-b074-4161-2168-50d09496a500' : 'bdb52584-b37f-4789-cf95-2a2a2d58a300'
+  return `https://imagedelivery.net/KxWh-mxPGDbsqJB3c5_fmA/${imageId}/public`
+})
 
 async function createChat(prompt: string) {
   loading.value = true
@@ -86,6 +94,7 @@ const quickChats = [
 
     <template #body>
       <UContainer class="flex-1 flex flex-col justify-center gap-4 sm:gap-6 py-8">
+        <img :src="imageUrl" style="max-width: 128px;max-height: 128px; margin: 0 auto;" />
         <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">
           How can I help you today?
         </h1>
@@ -101,11 +110,14 @@ const quickChats = [
           data-form-type="other"
           @submit="onSubmit"
         >
-          <UChatPromptSubmit color="neutral" :status="loading ? 'streaming' : 'ready'" />
+          <UChatPromptSubmit 
+            color="info" 
+            :status="loading ? 'streaming' : 'ready'"
+            :ui="{ 
+              base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
+            }"
+          />
 
-          <template #footer>
-            <ModelSelect v-model="model" />
-          </template>
         </UChatPrompt>
 
         <div class="flex flex-wrap gap-2">

@@ -319,27 +319,21 @@ watch(
               data-lpignore="true"
               data-form-type="other"
               :class="[
-                'sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10',
+                'sticky bottom-2 [view-transition-name:chat-prompt] z-10 chat-prompt-custom',
                 input.length === 0 ? 'force-default-height' : ''
               ]"
               @submit="handleSubmit"
             >
               <UChatPromptSubmit
                 :status="status"
-                color="neutral"
+                color="info"
+                :ui="{ 
+                  base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
+                }"
                 @stop="stop"
                 @reload="reload"
               />
 
-              <template #footer>
-                <div class="flex items-center justify-between gap-2 flex-wrap w-full">
-                  <ModelSelect v-model="model" />
-                  <div class="flex items-center justify-space-between gap-1.5 text-xs text-muted-foreground">
-                    <UIcon name="i-lucide-shield-check" class="w-3.5 h-3.5" />
-                    <span>PII never shared</span>
-                  </div>
-                </div>
-              </template>
             </UChatPrompt>
           </UContainer>
         </div>
@@ -362,16 +356,25 @@ watch(
 </template>
 
 <style scoped>
+.chat-prompt-custom {
+  border-radius: 8px !important;
+}
+
+:deep(.chat-prompt-custom) {
+  border-radius: 8px !important;
+}
+
 /* Force max height when input is empty to prevent layout expansion */
 :deep(.force-default-height) {
-  max-height: 88px !important;
-  height: 88px !important;
+  max-height: 48px !important;
+  height: 48px !important;
+  justify-content: center;
 }
 
 :deep(.force-default-height textarea),
 :deep(.force-default-height input) {
-  max-height: 36px !important;
-  height: 36px !important;
+  max-height: 32px !important;
+  height: 32px !important;
   overflow: hidden;
 }
 </style>

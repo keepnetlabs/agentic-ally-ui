@@ -1,5 +1,5 @@
 <template>
-  <div ref="containerRef" class="w-full h-full min-h-0 flex flex-col bg-default border-l border-gray-200 dark:border-gray-800">
+  <div ref="containerRef" class="w-full h-full min-h-0 flex flex-col bg-default border-l border-gray-200 dark:border-gray-700">
     <!-- Canvas Content Area -->
     <div class="flex-1 min-h-0 p-0 overflow-hidden">
       <div v-if="!content" class="h-full flex items-center justify-center text-muted-foreground">
@@ -25,7 +25,7 @@
         <div v-else-if="content.type === 'email'" class="space-y-4">
           <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             <!-- Email Header -->
-            <div class="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+            <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700" style="background-color: var(--bg-ui);">
               <div class="text-xs text-muted-foreground space-y-1">
                 <div><strong>From:</strong> {{ content.from || 'sender@example.com' }}</div>
                 <div><strong>To:</strong> {{ content.to || 'recipient@example.com' }}</div>
@@ -63,7 +63,7 @@
         <div v-else-if="content.type === 'url'" class="h-full min-h-0 flex flex-col">
           <div class="bg-white dark:bg-gray-900 border-0 rounded-none flex-1 min-h-0 flex flex-col">
             <!-- URL Header -->
-            <div class="bg-gray-50 dark:bg-gray-800 px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between" style="background-color: var(--bg-ui);">
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-globe" class="w-4 h-4" />
                 <div class="text-sm font-medium truncate">{{ content.title }}</div>

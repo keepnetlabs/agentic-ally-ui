@@ -159,13 +159,14 @@ defineShortcuts({
       class="bg-elevated/50"
     >
       <template #header="{ collapsed }">
-        <NuxtLink :to="homeUrl" class="flex items-center gap-0.5">
-          <Logo class="h-8 w-auto shrink-0" />
-          <span v-if="!collapsed" class="text-[15px] ml-2 inline-block font-bold text-highlighted">Agentic HRM</span>
-        </NuxtLink>
+        <span v-if="!collapsed" class="text-[15px] font-bold text-highlighted">Your chats</span>
 
         <div v-if="!collapsed" class="flex items-center gap-1.5 ms-auto">
           <UDashboardSearchButton collapsed class="pl-0 hover:bg-transparent" />
+          <UDashboardSidebarCollapse />
+        </div>
+        
+        <div v-if="collapsed" class="flex items-center justify-center w-full">
           <UDashboardSidebarCollapse />
         </div>
       </template>
@@ -174,15 +175,18 @@ defineShortcuts({
         <div class="flex flex-col gap-1.5">
           <UButton
             v-bind="collapsed ? { icon: 'i-lucide-plus' } : { label: 'New chat' }"
-            variant="soft"
             block
             :to="homeUrl"
+            variant="outline"
+            :ui="{ 
+              base: 'rounded border border-[#B3D4FC] bg-[#F1F8FE] text-[#2196F3] hover:bg-[#E3F0FD] dark:border-white dark:bg-black dark:text-white dark:hover:bg-gray-900 font-semibold text-sm leading-5',
+              font: 'font-sans'
+            }"
             @click="open = false"
           />
 
           <template v-if="collapsed">
             <UDashboardSearchButton collapsed />
-            <UDashboardSidebarCollapse />
           </template>
         </div>
 
@@ -191,7 +195,10 @@ defineShortcuts({
           :items="items"
           :collapsed="collapsed"
           orientation="vertical"
-          :ui="{ link: 'overflow-hidden' }"
+          :ui="{ 
+            link: 'overflow-hidden',
+            linkActive: 'dark:!text-white'
+          }"
         >
           <template #chat-trailing="{ item }">
             <div class="flex -mr-1.25 translate-x-full group-hover:translate-x-0 transition-transform">
@@ -218,3 +225,4 @@ defineShortcuts({
     <slot />
   </UDashboardGroup>
 </template>
+
