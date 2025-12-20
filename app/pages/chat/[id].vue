@@ -203,6 +203,17 @@ function copy(e: MouseEvent | null, message: any) {
   }, 2000)
 }
 
+function copyTrainingUrl(message: any) {
+  const url = extractTrainingUrlFromMessage(message)
+  if (url) {
+    clipboard.copy(url)
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  }
+}
+
 const showInCanvas = (e: MouseEvent, message: any) => {
   showInCanvasUtil(canvasRef, message.content)
 }
@@ -274,7 +285,7 @@ watch(
                   :is-canvas-visible="isCanvasVisible"
                   @open="openCanvasWithUrl"
                   @toggle="(url) => isCanvasVisible ? hideCanvas() : openCanvasWithUrl(url)"
-                  @copy="() => copy(null, message)"
+                  @copy="() => copyTrainingUrl(message)"
                 />
 
                 <!-- Phishing Email UI - show all emails -->
