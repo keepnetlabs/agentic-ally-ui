@@ -22,21 +22,71 @@
         </div>
 
         <!-- Email Template -->
-        <div v-else-if="content.type === 'email'" class="space-y-4">
-          <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div v-else-if="content.type === 'email'" class="h-full min-h-0 flex flex-col">
+          <div class="bg-white dark:bg-gray-900 border-0 rounded-none flex-1 min-h-0 flex flex-col">
             <!-- Email Header -->
-            <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700" style="background-color: var(--bg-ui);">
-              <div class="text-xs text-muted-foreground space-y-1">
-                <div><strong>From:</strong> {{ content.from || 'sender@example.com' }}</div>
-                <div><strong>To:</strong> {{ content.to || 'recipient@example.com' }}</div>
-                <div><strong>Subject:</strong> {{ content.subject || 'Email Subject' }}</div>
+            <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between" style="background-color: var(--bg-ui);">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-mail" class="w-4 h-4" />
+                <div class="text-xs text-muted-foreground space-y-1">
+                  <div><strong>From:</strong> {{ content.from || 'sender@example.com' }}</div>
+                  <div><strong>To:</strong> {{ content.to || 'recipient@example.com' }}</div>
+                  <div><strong>Subject:</strong> {{ content.subject || 'Email Subject' }}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <!-- View Mode Buttons -->
+                <div class="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-2 mr-2">
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-smartphone"
+                    :color="emailViewMode === 'mobile' ? 'primary' : 'neutral'"
+                    @click="setEmailViewMode('mobile')"
+                    class="transition-colors"
+                  />
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-tablet"
+                    :color="emailViewMode === 'tablet' ? 'primary' : 'neutral'"
+                    @click="setEmailViewMode('tablet')"
+                    class="transition-colors"
+                  />
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-monitor"
+                    :color="emailViewMode === 'desktop' ? 'primary' : 'neutral'"
+                    @click="setEmailViewMode('desktop')"
+                    class="transition-colors"
+                  />
+                </div>
+                <UButton
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-x"
+                  @click="$emit('close')"
+                  class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                />
               </div>
             </div>
             
             <!-- Email Body -->
-            <div class="p-4">
-              <div class="prose dark:prose-invert max-w-none">
-                <div v-html="content.body"></div>
+            <div class="relative flex-1 min-h-0 bg-gray-100 dark:bg-gray-950 flex items-center justify-center overflow-auto">
+              <div :class="[
+                'transition-all duration-300 bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden my-4',
+                {
+                  'w-[450px]': emailViewMode === 'mobile',
+                  'w-[820px]': emailViewMode === 'tablet',
+                  'w-full rounded-none shadow-none my-0': emailViewMode === 'desktop'
+                }
+              ]">
+                <div class="flex-1 overflow-auto p-4">
+                  <div class="prose dark:prose-invert max-w-none">
+                    <div v-html="content.body"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -186,8 +236,8 @@
         </div>
 
         <!-- Landing Page -->
-        <div v-else-if="content.type === 'landing-page' && content.landingPage" class="h-full overflow-auto">
-          <LandingPageCanvas :landing-page="content.landingPage" />
+        <div v-else-if="content.type === 'landing-page' && content.landingPage" class="h-full min-h-0 flex flex-col">
+          <LandingPageCanvas :landing-page="content.landingPage" @close="$emit('close')" />
         </div>
 
         <!-- Generic Content -->
@@ -286,6 +336,7 @@ const copyCode = () => {
 const containerRef = ref<HTMLElement | null>(null)
 const isFullscreen = ref(false)
 const viewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
+const emailViewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
 
 const onFsChange = () => {
   isFullscreen.value = !!document.fullscreenElement
@@ -293,6 +344,10 @@ const onFsChange = () => {
 
 const setViewMode = (mode: 'mobile' | 'tablet' | 'desktop') => {
   viewMode.value = mode
+}
+
+const setEmailViewMode = (mode: 'mobile' | 'tablet' | 'desktop') => {
+  emailViewMode.value = mode
 }
 
 const toggleFullscreen = async () => {
@@ -304,6 +359,7 @@ const toggleFullscreen = async () => {
     }
   } catch {}
 }
+
 
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFsChange)
@@ -340,7 +396,20 @@ const refreshIframe = () => {
 
 const openInNewTab = () => {
   if (iframeUrl.value) {
-    window.open(iframeUrl.value, '_blank', 'noopener,noreferrer')
+    try {
+      const url = new URL(iframeUrl.value)
+      // Remove accessToken and t parameters for security - don't send sensitive tokens to new tabs
+      url.searchParams.delete('accessToken')
+      url.searchParams.delete('t') // Remove timestamp parameter
+      window.open(url.toString(), '_blank', 'noopener,noreferrer')
+    } catch {
+      // If URL parsing fails, use regex to remove accessToken and t parameters
+      const urlWithoutParams = iframeUrl.value
+        .replace(/[?&](accessToken|t)=[^&]*/g, '')
+        .replace(/\?&/, '?') // Clean up double separators
+        .replace(/&$/, '') // Remove trailing &
+      window.open(urlWithoutParams, '_blank', 'noopener,noreferrer')
+    }
   }
 }
 
