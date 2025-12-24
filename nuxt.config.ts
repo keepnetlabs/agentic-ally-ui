@@ -11,6 +11,10 @@ export default defineNuxtConfig({
     "nuxt-auth-utils"
   ],
 
+  hub: {
+    blob: true
+  },
+
   runtimeConfig: {
     session: {
       name: 'nuxt-session',

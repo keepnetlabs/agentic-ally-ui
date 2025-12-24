@@ -1,6 +1,7 @@
 import { parseAIMessage } from '../../utils/text-utils'
 import { and } from 'drizzle-orm'
 import * as tables from '../../database/schema'
+import { extractCompanyId } from '../../utils/company-id'
 
 defineRouteMeta({
   openAPI: {
@@ -49,14 +50,39 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Fetch policy URLs for company context
+  const companyId = extractCompanyId(event) || getHeader(event, 'x-company-id')
+  let policyUrls: string[] = []
+
+  if (companyId) {
+    try {
+      const policies = await db.query.policies.findMany({
+        where: (policy, { eq }) => eq(policy.companyId, companyId)
+      })
+      // Build full URLs for blob access
+      // If blobUrl is a pathname, prepend the base URL
+      policyUrls = policies.map(policy => {
+        if (policy.blobUrl.startsWith('http')) {
+          return policy.blobUrl
+        }
+        // Construct full URL for blob serving
+        const baseUrl = getRequestURL(event).origin
+        return `${baseUrl}/api/_hub/blob/${encodeURIComponent(policy.blobUrl)}`
+      })
+    } catch (error) {
+      console.error('Failed to fetch policies:', error)
+      // Continue without policies if fetch fails
+    }
+  }
+
   // Proxy the request to the Fleet Agent Worker backend
   console.log('FLEET_AGENT_URL', process.env.FLEET_AGENT_URL)
 
   try {
-    const accessToken = getHeader(event, 'x-agentic-ally-token') || 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3NjYzNTA5MjQsImV4cCI6MTc2NjQzNzMyNCwiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY2MzUwOTI0LCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiM0YwOTg0Qjk3NEJDRTJGNTNGMDlGMzgyRjNCMzNDMjYiLCJpYXQiOjE3NjYzNTA5MjQsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.G5pG65N4kHSnGG5YiNjWYV9HUn6q105jrpKSG_q_5_lW8FYrQGwBA0VbskE5iHXAT1V6bh1SVw2_9wi2ZTXj_NOq0-_5xX1SYZYYAMSjZ_ELK3xK7uLJpmGfT6_4-fnkvFRoxLwpV79P5S1S378ej6ks_WGzcfNlRn4HnoK9w_8iSE-HmrM9C8VtDq6LCAIVRGRfdQbQiWY9QwrTaXk5sqj0zZpoPArW8Mb8ENoMfFb032uGyJRtl0h2ohTuP3kDfOhWWzxKm9IHdu5OU-8yRIuzBp7iwHD0HyowvdR59UUM7kZJK5XPe8CY9ChzSIPbWchXH9bcgIZ5ELEEWJZgvw'
-    const companyId = getHeader(event, 'x-company-id')
+    const accessToken = getHeader(event, 'x-agentic-ally-token') || 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3NjY2MDQ4ODMsImV4cCI6MTc2NjY5MTI4MywiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY2NjA0ODgzLCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiQzUxNjlBRjlDRDMzODMwQjE5QUMyQTI1NjdCMEMwQzQiLCJpYXQiOjE3NjY2MDQ4ODMsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.xpXrfHQ9MOcv_h5MV8KjYY0-QdRvXwQ_wwz9fSXL4BOr2HGq9rw1H_Zr46kQctFmbYgF3MQfDO7lf34paMSEdiX4sbke12UhYx86QjOC8SAOK6WawBRvDz8_JW1a1xqqiig0hBa5TIF2Lz7zKf_F9Cr5ubTFuLlUrRPd-Iu5xwCFydjQ379_g8SPmG7KXO6DiYjZCrhwzfLpRD0Uz72SOXmPFShH7FK6jjxihouUNlp-mkzE8ulD4MuiMeyxzNNkMZfckk4w9DLLeiotoBFujjGtpV8hQOoR2lHR-I_8PbV1MydFYfjsO4Mb5fbT8qMyNRmbIwGaf1o33CLcIBkAmA'
     console.log('accessToken', accessToken)
     console.log('companyId', companyId)
+    console.log('policyUrls', policyUrls)
     const response = await fetch(process.env.FLEET_AGENT_URL!, {
       method: 'POST',
       headers: {
@@ -64,7 +90,7 @@ export default defineEventHandler(async (event) => {
         ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
         ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
       },
-      body: JSON.stringify({ modelProvider, model, messages, conversationId })
+      body: JSON.stringify({ modelProvider, model, messages, conversationId, policyUrls })
     })
 
     if (!response.ok) {

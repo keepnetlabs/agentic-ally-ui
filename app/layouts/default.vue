@@ -20,12 +20,31 @@ const homeUrl = computed(() => {
 
   const accessToken = route.query.accessToken as string
   const baseApiUrl = route.query.baseApiUrl as string
+  const companyId = route.query.companyId as string
 
   if (accessToken) params.append('accessToken', accessToken)
   if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
+  if (companyId) params.append('companyId', companyId)
 
   const queryString = params.toString()
   return `/${queryString ? '?' + queryString : ''}`
+})
+
+// Build files URL with all params from route query
+const filesUrl = computed(() => {
+  const params = new URLSearchParams()
+  if (sessionId) params.append('sessionId', sessionId)
+
+  const accessToken = route.query.accessToken as string
+  const baseApiUrl = route.query.baseApiUrl as string
+  const companyId = route.query.companyId as string
+
+  if (accessToken) params.append('accessToken', accessToken)
+  if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
+  if (companyId) params.append('companyId', companyId)
+
+  const queryString = params.toString()
+  return `/files${queryString ? '?' + queryString : ''}`
 })
 
 const deleteModal = overlay.create(LazyModalConfirm, {
@@ -182,6 +201,15 @@ defineShortcuts({
               base: 'rounded border border-[#B3D4FC] bg-[#F1F8FE] text-[#2196F3] hover:bg-[#E3F0FD] dark:border-white dark:bg-black dark:text-white dark:hover:bg-gray-900 font-semibold text-sm leading-5',
               font: 'font-sans'
             }"
+            @click="open = false"
+          />
+
+          <UButton
+            v-bind="collapsed ? { icon: 'i-lucide-folder' } : { label: 'Files' }"
+            block
+            :to="filesUrl"
+            variant="ghost"
+            color="neutral"
             @click="open = false"
           />
 

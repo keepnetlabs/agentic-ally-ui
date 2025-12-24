@@ -52,3 +52,14 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     references: [chats.id]
   })
 }))
+
+export const policies = sqliteTable('policies', {
+  id: text().primaryKey().$defaultFn(() => randomUUID()),
+  companyId: text().notNull(),
+  name: text().notNull(),
+  size: integer().notNull(),
+  blobUrl: text().notNull(),
+  createdAt: integer({ mode: 'timestamp' }).notNull().default(sql`(unixepoch())`)
+}, t => [
+  index('companyIdIdx').on(t.companyId)
+])
