@@ -36,7 +36,7 @@
 	 */
 	"vars": { 
 		"NUXT_SESSION_PASSWORD": "b24daba670db45b882ba98b387c89bf3",
-		"FLEET_AGENT_URL": "https://agentic-ally.keepnet-labs-ltd-business-profile4086.workers.dev/chat"
+		"FLEET_AGENT_URL": "https://agentic-ai-agent.keepnetlabs.com/chat"
 	},
 	/**
 	 * Note: Use secrets to store sensitive data.
