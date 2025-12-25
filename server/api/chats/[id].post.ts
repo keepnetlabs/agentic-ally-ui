@@ -59,15 +59,15 @@ export default defineEventHandler(async (event) => {
       const policies = await db.query.policies.findMany({
         where: (policy, { eq }) => eq(policy.companyId, companyId)
       })
-      // Build full URLs for blob access
+      // Build full URLs for R2 file access
       // If blobUrl is a pathname, prepend the base URL
       policyUrls = policies.map(policy => {
         if (policy.blobUrl.startsWith('http')) {
           return policy.blobUrl
         }
-        // Construct full URL for blob serving
+        // Construct full URL for R2 file serving
         const baseUrl = getRequestURL(event).origin
-        return `${baseUrl}/api/_hub/blob/${encodeURIComponent(policy.blobUrl)}`
+        return `${baseUrl}/api/policies/${encodeURIComponent(policy.blobUrl)}`
       })
     } catch (error) {
       console.error('Failed to fetch policies:', error)

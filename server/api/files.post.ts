@@ -28,16 +28,25 @@ export default defineEventHandler(async (event) => {
   const fileExtension = file.name.split('.').pop() || ''
   const blobPath = `policies/${companyId}/${fileId}.${fileExtension}`
 
-  // Upload to Blob storage
-  const blob = hubBlob()
-  const blobObject = await blob.put(blobPath, file, {
-    contentType: file.type || 'application/octet-stream',
-    addRandomSuffix: false
+  // Upload to R2 storage (using direct R2 binding to avoid hub blob conflict)
+  const r2 = event?.context?.cloudflare?.env?.POLICIES_BUCKET
+
+  if (!r2) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'R2 bucket binding not found'
+    })
+  }
+
+  // Upload file to R2
+  await r2.put(blobPath, file, {
+    httpMetadata: {
+      contentType: file.type || 'application/octet-stream'
+    }
   })
 
-  // Get the blob URL - use pathname for serving via /api/_hub/blob endpoint
-  // The URL will be accessible at: /api/_hub/blob/{pathname}
-  const blobUrl = blobObject.pathname || blobPath
+  // Store pathname for serving
+  const blobUrl = blobPath
 
   // Save metadata to D1
   const db = useDrizzle()

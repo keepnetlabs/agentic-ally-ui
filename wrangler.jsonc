@@ -19,6 +19,12 @@
 		"migrations_dir": "server/database/migrations"
 	}
 	],
+	"r2_buckets": [
+	{
+		"binding": "POLICIES_BUCKET",
+		"bucket_name": "agentic-ally-policies"
+	}
+	],
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

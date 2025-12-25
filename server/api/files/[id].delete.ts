@@ -31,23 +31,17 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Delete from Blob storage
+  // Delete from R2 storage
   try {
-    const blob = hubBlob()
-    // Extract pathname from blobUrl - remove /api/_hub/blob/ prefix if present
-    let blobPath = policy.blobUrl
-    if (blobPath.includes('/api/_hub/blob/')) {
-      blobPath = blobPath.split('/api/_hub/blob/')[1]
-      blobPath = decodeURIComponent(blobPath)
-    } else if (blobPath.startsWith('http')) {
-      // Extract pathname from full URL
-      const url = new URL(blobPath)
-      blobPath = url.pathname.replace('/api/_hub/blob/', '')
+    const r2 = event?.context?.cloudflare?.env?.POLICIES_BUCKET
+
+    if (r2) {
+      // blobUrl is the pathname directly
+      await r2.delete(policy.blobUrl)
     }
-    await blob.del(blobPath)
   } catch (error) {
-    console.error('Failed to delete blob:', error)
-    // Continue with DB deletion even if blob deletion fails
+    console.error('Failed to delete from R2:', error)
+    // Continue with DB deletion even if R2 deletion fails
   }
 
   // Delete from D1
