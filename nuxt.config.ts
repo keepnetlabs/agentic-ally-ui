@@ -4,16 +4,12 @@ export default defineNuxtConfig({
 
   modules: [
     "nitro-cloudflare-dev",
+    "@nuxthub/core",
     "@nuxt/eslint",
     "@nuxt/ui-pro",
     "@nuxtjs/mdc",
-    "@nuxthub/core",
     "nuxt-auth-utils"
   ],
-
-  hub: {
-    blob: true
-  },
 
   runtimeConfig: {
     session: {
