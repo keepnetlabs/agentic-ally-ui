@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
 
   // Delete from R2 storage
   try {
-    const r2 = event?.context?.cloudflare?.env?.POLICIES_BUCKET
+    const r2 = event?.context?.cloudflare?.env?.agentic_ally_policies
 
     if (r2) {
       // blobUrl is the pathname directly

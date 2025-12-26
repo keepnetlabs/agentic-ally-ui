@@ -21,6 +21,15 @@
   --ui-container: var(--container-3xl);
 }
 
+/* Make all links and clickable elements show pointer cursor */
+a,
+button,
+[role="button"],
+[onclick],
+.cursor-pointer {
+  cursor: pointer !important;
+}
+
 /* Dark mode override for active navigation links - override text-primary */
 .dark a[data-active].text-primary,
 .dark .group[data-active].text-primary,

@@ -2,11 +2,16 @@
 // @ts-nocheck
 import { LazyModalConfirm } from '#components'
 import { useCanvas } from '../composables/useCanvas'
+import { useChatNavigation } from '../composables/useChatNavigation'
 const { isCanvasVisible, hideCanvas } = useCanvas()
 
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const overlay = useOverlay()
+
+// Get streaming state
+const { isStreaming, stopStreaming, streamingChatId } = useChatNavigation()
 
 const open = ref(false)
 
@@ -50,7 +55,9 @@ const filesUrl = computed(() => {
 const deleteModal = overlay.create(LazyModalConfirm, {
   props: {
     title: 'Delete chat',
-    description: 'Are you sure you want to delete this chat? This cannot be undone.'
+    description: 'Are you sure you want to delete this chat? This cannot be undone.',
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel'
   }
 })
 
@@ -115,10 +122,11 @@ const items = computed(() => groups.value?.flatMap((group) => {
   return [{
     label: group.label,
     type: 'label' as const
-  }, ...group.items.map(item => ({
-    ...item,
+  }, ...group.items.map((item: any) => ({
+    label: item.label,
+    to: item.to,  // Navigation URL from useFetch transform
     slot: 'chat' as const,
-    icon: undefined,
+    id: item.id,
     class: item.label === 'Untitled' ? 'text-muted' : ''
   }))]
 }))
@@ -223,7 +231,7 @@ defineShortcuts({
           :items="items"
           :collapsed="collapsed"
           orientation="vertical"
-          :ui="{ 
+          :ui="{
             link: 'overflow-hidden',
             linkActive: 'dark:!text-white'
           }"

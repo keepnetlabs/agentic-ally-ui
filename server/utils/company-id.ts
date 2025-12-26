@@ -8,7 +8,8 @@ export const extractCompanyId = (event: any): string | null => {
     // Try header first
     const headerCompanyId = getHeader(event, 'x-company-id')
     if (headerCompanyId) {
-        return headerCompanyId
+        // Clean: remove trailing slashes and whitespace
+        return headerCompanyId.trim().replace(/\/+$/, '')
     }
 
     // Fallback to JWT token decode
@@ -24,7 +25,8 @@ export const extractCompanyId = (event: any): string | null => {
                 )
                 // Extract user_company_id from token
                 if (payload.user_company_id) {
-                    return String(payload.user_company_id)
+                    // Clean: remove trailing slashes and whitespace
+                    return String(payload.user_company_id).trim().replace(/\/+$/, '')
                 }
             }
         } catch (error) {

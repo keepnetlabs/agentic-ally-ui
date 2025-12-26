@@ -6,6 +6,7 @@ const props = defineProps<{
   index?: number
   totalCount?: number
   isCanvasVisible: boolean
+  isQuishing?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +21,7 @@ const emit = defineEmits<{
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div class="text-xs flex items-center gap-2">
           <UIcon name="i-lucide-mail" class="w-3.5 h-3.5" />
-          <span class="font-medium">Phishing Email Preview</span>
+          <span class="font-medium">{{ isQuishing ? 'Quishing Email Preview' : 'Phishing Email Preview' }}</span>
           <span v-if="totalCount && totalCount > 1" class="text-muted-foreground">
             ({{ (index ?? 0) + 1 }}/{{ totalCount }})
           </span>

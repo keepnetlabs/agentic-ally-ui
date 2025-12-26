@@ -29,7 +29,10 @@ export default defineEventHandler(async (event) => {
   const blobPath = `policies/${companyId}/${fileId}.${fileExtension}`
 
   // Upload to R2 storage (using direct R2 binding to avoid hub blob conflict)
-  const r2 = event?.context?.cloudflare?.env?.POLICIES_BUCKET
+  const r2 = event?.context?.cloudflare?.env?.agentic_ally_policies
+
+  console.log('Available bindings:', Object.keys(event?.context?.cloudflare?.env || {}))
+  console.log('R2 binding found:', !!r2)
 
   if (!r2) {
     throw createError({

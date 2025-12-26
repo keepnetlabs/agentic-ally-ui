@@ -159,7 +159,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
           <div>
             <h1 class="text-2xl font-bold text-highlighted">Policy Files</h1>
             <p class="text-gray-500 dark:text-gray-400 mt-1">
-              Manage your company policy documents
+              Manage your company documents
             </p>
           </div>
 
@@ -185,7 +185,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
               <tbody class="bg-white dark:bg-gray-950 divide-y divide-gray-200 dark:divide-gray-800">
                 <tr v-if="!policies || policies.length === 0">
                   <td colspan="4" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No policy files uploaded yet
+                    No files uploaded yet
                   </td>
                 </tr>
                 <tr
@@ -220,7 +220,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
 
           <!-- File Upload Section -->
           <div class="border border-gray-200 dark:border-gray-800 rounded-lg p-6">
-            <h2 class="text-lg font-semibold text-highlighted mb-4">Upload Policy File</h2>
+            <h2 class="text-lg font-semibold text-highlighted mb-4">Upload File</h2>
             <div class="space-y-4">
               <div>
                 <label

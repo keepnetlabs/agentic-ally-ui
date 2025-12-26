@@ -1,6 +1,41 @@
 <script setup lang="ts">
 // @ts-nocheck - Nuxt auto-imports are available at runtime
+import { LazyModalConfirm } from '#components'
+
 const colorMode = useColorMode()
+const router = useRouter()
+const { isStreaming, stopStreaming } = useChatNavigation()
+
+// Global streaming check on route navigation
+router.beforeEach(async (to, from) => {
+  // Check when navigating away from chat while streaming
+  if (
+    from.name === 'chat-id' &&
+    isStreaming.value &&
+    (to.name !== 'chat-id' || from.params.id !== to.params.id)
+  ) {
+    const overlay = useOverlay()
+    const instance = overlay.create(LazyModalConfirm, {
+      props: {
+        title: 'Stop generating?',
+        description: 'Your response will be discarded.',
+        confirmLabel: 'Stop',
+        cancelLabel: 'Keep'
+      }
+    }).open()
+
+    const confirmed = await instance.result
+
+    if (confirmed) {
+      stopStreaming()
+      return true // Allow navigation
+    } else {
+      return false // Prevent navigation
+    }
+  }
+
+  return true // Allow navigation
+})
 
 const color = computed(() => colorMode.value === 'dark' ? '#1b1718' : 'white')
 

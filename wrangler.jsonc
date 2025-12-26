@@ -6,24 +6,26 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "agentic-ui",
 	"compatibility_date": "2025-08-23",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"pages_build_output_dir": "./dist",
 	"observability": {
 		"enabled": true
 	},
 	"d1_databases": [
-	{
-		"binding": "db",
-		"database_name": "agentic-ally-db",
-		"database_id": "24eae270-5b19-4e10-830a-e63bada6376e",
-		"migrations_dir": "server/database/migrations"
-	}
+		{
+			"binding": "db",
+			"database_name": "agentic-ally-db",
+			"database_id": "24eae270-5b19-4e10-830a-e63bada6376e",
+			"migrations_dir": "server/database/migrations"
+		}
 	],
 	"r2_buckets": [
-	{
-		"binding": "POLICIES_BUCKET",
-		"bucket_name": "agentic-ally-policies"
-	}
+		{
+			"bucket_name": "agentic-ally-policies",
+			"binding": "agentic_ally_policies"
+		}
 	],
 	/**
 	 * Smart Placement
@@ -40,7 +42,7 @@
 	 * Environment Variables
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 */
-	"vars": { 
+	"vars": {
 		"NUXT_SESSION_PASSWORD": "b24daba670db45b882ba98b387c89bf3",
 		"FLEET_AGENT_URL": "https://agentic-ai-agent.keepnetlabs.com/chat"
 	},

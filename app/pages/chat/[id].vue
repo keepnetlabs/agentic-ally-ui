@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 // @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
 import { useToast } from '#imports'
@@ -13,6 +13,7 @@ import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
 import { parseAIMessage, parseAIReasoning } from '../../utils/text-utils'
 import { extractTrainingUrlFromMessage, extractAllPhishingEmailsFromMessage, extractLandingPageFromMessage, getSanitizedContentForTemplate, getAllStreamText, showInCanvas as showInCanvasUtil } from '../../utils/message-utils'
+import { useChatNavigation } from '../../composables/useChatNavigation'
 import type { ServerChat } from '../../types/chat'
 
 const components = {
@@ -20,6 +21,7 @@ const components = {
 }
 
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const clipboard = useClipboard()
 const { model } = useLLM()
@@ -174,6 +176,15 @@ const handleSubmit = createHandleSubmit(chatClient, input, messages, status, las
 const stop = createStop()
 const reload = createReload(chatClient)
 
+// Track streaming state for navigation
+const { setStreaming } = useChatNavigation()
+watch(
+  () => status.value,
+  (newStatus) => {
+    setStreaming(chatId, newStatus === 'streaming', stop)
+  }
+)
+
 const copied = ref(false)
 const canvasRef = ref()
 const { openCanvasWithUrl, openCanvasWithEmail, openCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, hideCanvas, messages, route, chat, status)
@@ -243,6 +254,7 @@ watch(
     }
   }
 )
+
 </script>
 
 <template>
@@ -296,6 +308,7 @@ watch(
                   :index="index"
                   :total-count="extractAllPhishingEmailsFromMessage(message).length"
                   :is-canvas-visible="isCanvasVisible"
+                  :is-quishing="email.isQuishing"
                   @open="(email) => openCanvasWithEmail(email)"
                   @toggle="(email) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(email)"
                 />
