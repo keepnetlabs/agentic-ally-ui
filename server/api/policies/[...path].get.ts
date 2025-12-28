@@ -1,5 +1,41 @@
 import { extractCompanyId } from '../../utils/company-id'
 
+/**
+ * Extract text from PDF using pdfjs-serverless
+ * Works in Cloudflare Workers edge environment
+ */
+async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
+  try {
+    const { getDocument } = await import('pdfjs-serverless')
+    const uint8Array = new Uint8Array(buffer)
+
+    const document = await getDocument({
+      data: uint8Array,
+      useSystemFonts: true,
+    }).promise
+
+    const pages: string[] = []
+
+    // Iterate through each page and extract text
+    for (let i = 1; i <= document.numPages; i++) {
+      const page = await document.getPage(i)
+      const textContent = await page.getTextContent()
+      const pageText = textContent.items.map((item: any) => item.str).join(' ')
+      pages.push(pageText)
+    }
+
+    const fullText = pages.join('\n')
+
+    if (!fullText || fullText.trim().length === 0) {
+      return 'Unable to extract text from PDF. The PDF may be image-based or encrypted.'
+    }
+
+    return fullText.trim()
+  } catch (error) {
+    return `Error extracting text: ${error instanceof Error ? error.message : 'Unknown error'}`
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const { path } = getRouterParams(event)
   const companyId = extractCompanyId(event)
@@ -54,8 +90,33 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Just return policy info, no PDF reading
-  const pdfText = 'PDF text extraction not implemented yet'
+  // Read PDF from R2 and extract text
+  const object = await r2.get(policy.blobUrl)
+
+  if (!object) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'File not found'
+    })
+  }
+
+  let pdfText = 'PDF text extraction not implemented yet'
+  try {
+    // Check if object has arrayBuffer method
+    if (object && typeof (object as any).arrayBuffer === 'function') {
+      const pdfBuffer = await (object as any).arrayBuffer()
+
+      if (pdfBuffer && pdfBuffer.byteLength > 0) {
+        pdfText = await extractTextFromPDF(pdfBuffer)
+      } else {
+        pdfText = 'PDF file is empty'
+      }
+    } else {
+      pdfText = 'R2 object does not support arrayBuffer()'
+    }
+  } catch (error) {
+    pdfText = `Error reading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json; charset=utf-8'

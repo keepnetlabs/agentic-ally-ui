@@ -30,6 +30,7 @@
     "drizzle-orm": "^0.44.5",
     "nuxt": "^4.0.3",
     "nuxt-auth-utils": "^0.5.23",
+    "pdfjs-serverless": "^1.1.0",
     "shiki-stream": "^0.1.2",
     "vue": "^3.5.19",
     "vue-router": "^4.5.1",

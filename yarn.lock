@@ -7670,6 +7670,11 @@ pathe@^2.0.1, pathe@^2.0.3:
   resolved "https://registry.yarnpkg.com/pathe/-/pathe-2.0.3.tgz#3ecbec55421685b70a9da872b2cff3e1cbed1716"
   integrity sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==
 
+pdfjs-serverless@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/pdfjs-serverless/-/pdfjs-serverless-1.1.0.tgz#b58c4304a9f9663df29cd7f0257cca7c70ff71a3"
+  integrity sha512-4JNsyupufenSUfFpMxCsrkfzeskWFS5J8ksXPeSnaaEug9h0bbBNuI+WqEpUGHMLGrORakMOvnc9mN9rqF7iqA==
+
 pend@~1.2.0:
   version "1.2.0"
   resolved "https://registry.yarnpkg.com/pend/-/pend-1.2.0.tgz#7a57eb550a6783f9115331fcf4663d5c8e007a50"
