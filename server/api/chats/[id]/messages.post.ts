@@ -4,7 +4,6 @@ import * as tables from '../../../database/schema'
 export default defineEventHandler(async (event) => {
   console.log('Messages POST endpoint called')
 
-  const session = await getUserSession(event)
   const query = getQuery(event)
   const { id } = getRouterParams(event)
   const body = await readBody(event)
@@ -12,9 +11,18 @@ export default defineEventHandler(async (event) => {
   // Get sessionId from URL query parameter (for iframe usage)
   const querySessionId = query.sessionId as string
 
+  let sessionUserId: string | undefined
+
+  try {
+    const session = await getUserSession(event)
+    sessionUserId = (session as any).user?.id
+  } catch {
+    // Session devre dışı, query'den devam
+  }
+
   // Fallback user ID if session is empty (for iframe access)
-  // Priority: querySessionId > session.user.id > 'guest-session'
-  const userId = querySessionId || (session as any).user?.id || 'guest-session'
+  // Priority: querySessionId > sessionUserId > 'guest-session'
+  const userId = querySessionId || sessionUserId || 'guest-session'
 
   console.log('Request data:', { chatId: id, body, userId })
 
