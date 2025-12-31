@@ -12,7 +12,8 @@
       "Bash(npm run typecheck:*)",
       "Bash(find:*)",
       "Bash(yarn add:*)",
-      "Read(//c/Users/user/Desktop/Agentic Ally/fleet-v2-main/**)"
+      "Read(//c/Users/user/Desktop/Agentic Ally/fleet-v2-main/**)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []

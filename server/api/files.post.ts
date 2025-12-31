@@ -23,6 +23,23 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Validate file type - only PDF allowed
+  if (file.type !== 'application/pdf') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Only PDF files are allowed'
+    })
+  }
+
+  // Validate file size - max 50MB
+  const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB in bytes
+  if (file.size > MAX_FILE_SIZE) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'File size exceeds 50MB limit'
+    })
+  }
+
   // Generate unique path for blob storage
   const fileId = randomUUID()
   const fileExtension = file.name.split('.').pop() || ''
