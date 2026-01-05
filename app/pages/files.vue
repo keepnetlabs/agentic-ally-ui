@@ -241,7 +241,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
       <UContainer class="lg:py-8 py-0 px-2 lg:px-4">
         <div class="space-y-6">
           <div>
-            <h1 class="text-2xl font-bold text-highlighted">Policy Files</h1>
+            <h1 class="text-2xl font-bold text-highlighted">Files</h1>
             <p class="text-gray-500 dark:text-gray-400 mt-1">
               Manage your company documents
             </p>

@@ -8,12 +8,14 @@ import { useLLM } from '../../composables/useLLM'
 import { useCanvas } from '../../composables/useCanvas'
 import { useCanvasTriggers } from '../../composables/useCanvasTriggers'
 import { useChatClient } from '../../composables/useChatClient'
+import { parseError } from '../../utils/error-handler'
 import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
 import { parseAIMessage, parseAIReasoning } from '../../utils/text-utils'
 import { extractTrainingUrlFromMessage, extractAllPhishingEmailsFromMessage, extractLandingPageFromMessage, getSanitizedContentForTemplate, getAllStreamText, showInCanvas as showInCanvasUtil } from '../../utils/message-utils'
 import { useChatNavigation } from '../../composables/useChatNavigation'
+import { exponentialBackoffWithJitter, DEFAULT_RETRY_CONFIG, type RetryConfig } from '../../utils/retry-handler'
 import type { ServerChat } from '../../types/chat'
 
 const components = {
@@ -34,6 +36,90 @@ const chatId = String(route.params.id)
 const sessionId = route.query.sessionId as string
 
 const chatUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
+
+/**
+ * Save message with exponential backoff + jitter retry
+ * Industry standard pattern (Netflix, AWS, Google)
+ */
+const saveMessageWithRetry = async (
+  messageId: string,
+  content: string,
+  attempt = 0,
+  startTime = Date.now(),
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
+) => {
+  const maxRetries = config.maxRetries || DEFAULT_RETRY_CONFIG.maxRetries!
+  const deadline = config.deadline || DEFAULT_RETRY_CONFIG.deadline!
+
+  try {
+    const messagesUrl = sessionId
+      ? `/api/chats/${chatId}/messages?sessionId=${sessionId}`
+      : `/api/chats/${chatId}/messages`
+
+    await $fetch(messagesUrl, {
+      method: 'POST',
+      body: {
+        id: messageId,
+        role: 'assistant',
+        content: content
+      },
+      headers: {
+        ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
+        ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
+      }
+    })
+
+    // Success - silent success, no toast (only notify on errors)
+    console.log('AI message saved successfully')
+    return true
+  } catch (error) {
+    const elapsed = Date.now() - startTime
+
+    // Check deadline first
+    if (elapsed > deadline) {
+      console.error('Message save deadline exceeded after', attempt, 'attempts')
+      const { title, message, icon } = parseError(error)
+      toast.add({
+        title: 'Failed to save message',
+        description: `${message} (timeout after ${attempt} attempts)`,
+        icon,
+        color: 'error',
+        duration: 0
+      })
+      return false
+    }
+
+    // Check max retries
+    if (attempt >= maxRetries) {
+      console.error('Max retries exceeded for message save')
+      const { title, message, icon } = parseError(error)
+      toast.add({
+        title: 'Failed to save message',
+        description: `${message} (${maxRetries} attempts failed)`,
+        icon,
+        color: 'error',
+        duration: 0
+      })
+      return false
+    }
+
+    // Calculate backoff delay with jitter
+    const delay = exponentialBackoffWithJitter(attempt)
+
+    // Show retry progress
+    console.log(`Message save failed, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxRetries})`)
+    toast.add({
+      title: 'Retrying...',
+      description: `Attempt ${attempt + 1}/${maxRetries}`,
+      icon: 'i-lucide-loader',
+      color: 'warning'
+    })
+
+    // Auto-retry with delay
+    await new Promise(resolve => setTimeout(resolve, delay))
+    return saveMessageWithRetry(messageId, content, attempt + 1, startTime, config)
+  }
+}
 
 // @ts-ignore - Nuxt allows top-level await in script setup
 const { data: chat } = await useFetch<ServerChat>(chatUrl, {
@@ -75,94 +161,33 @@ const chatClient = new Chat({
     parts: m.parts ?? []
   })),
   async onFinish(data: any) {
-    console.log('onFinish called with:', data)
-    
     // Extract the actual message from the data structure
     const message = data.message || data
-    
-    console.log('Extracted message:', message)
-    console.log('Message role:', message?.role)
-    console.log('Message id:', message?.id)
-    
-    // Save AI response to database
+
+    // Save AI response to database with retry logic
     if (message && message.role === 'assistant') {
       const content = message.content || parseAIMessage(message)
-      console.log('Trying to save AI message:', {
-        id: message.id,
-        role: message.role,
-        content: content?.substring(0, 100) + '...',
-        contentLength: content?.length
-      })
-      
-      try {
-        const messagesUrl = sessionId ? `/api/chats/${chatId}/messages?sessionId=${sessionId}` : `/api/chats/${chatId}/messages`
-        const result = await $fetch(messagesUrl, {
-          method: 'POST',
-          body: {
-            id: message.id,
-            role: 'assistant',
-            content: content
-          },
-          headers: {
-            ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
-            ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
-          }
-        })
-        console.log('AI message saved successfully:', result)
-      } catch (error) {
-        console.error('Failed to save AI message:', error)
-      }
-      
+
+      // Save with exponential backoff retry
+      await saveMessageWithRetry(message.id, content)
+
       // Auto-trigger canvas for URLs in AI response
       checkAndTriggerCanvas(message)
-    } else {
-      console.log('Not saving - message not found or not assistant role')
-      console.log('Message exists?', !!message)
-      console.log('Role is assistant?', message?.role === 'assistant')
     }
-    
+
     // Mark finished to prevent stuck loader
     lastFinishedMessageId.value = message?.id || null
   },
   onError(err: any) {
-    try {
-      console.error('Chat stream error:', err)
-      console.error('Full error object:', JSON.stringify(err, null, 2))
-
-      let errorMessage = 'An unknown error occurred'
-
-      if (err?.message) {
-        try {
-          // Try to parse as JSON if it starts with '{'
-          if (typeof err.message === 'string' && err.message[0] === '{') {
-            const parsed = JSON.parse(err.message)
-            errorMessage = parsed?.message || err.message
-          } else {
-            errorMessage = err.message
-          }
-        } catch (parseErr) {
-          // If parsing fails, just use the message as-is
-          errorMessage = err.message
-        }
-      } else if (typeof err === 'string') {
-        errorMessage = err
-      }
-
-      toast.add({
-        description: errorMessage,
-        icon: 'i-lucide-alert-circle',
-        color: 'error',
-        duration: 0
-      })
-    } catch (handlerErr) {
-      console.error('Error in onError handler:', handlerErr)
-      toast.add({
-        description: 'An error occurred while processing the stream',
-        icon: 'i-lucide-alert-circle',
-        color: 'error',
-        duration: 0
-      })
-    }
+    console.error('Chat stream error:', err)
+    const { title, message, icon, canRetry } = parseError(err)
+    toast.add({
+      title,
+      description: message,
+      icon,
+      color: 'error',
+      duration: canRetry ? 0 : 5000
+    })
   }
 })
 
@@ -255,6 +280,21 @@ watch(
   }
 )
 
+function handleCanvasRefresh(messageId: string, newContent: string) {
+  // Update chat.value messages
+  if (chat.value?.messages) {
+    const message = chat.value.messages.find((m: any) => m.id === messageId)
+    if (message) {
+      message.content = newContent
+    }
+  }
+  // Update Chat client's internal messages array (critical for regenerate)
+  const clientMessage = chatClient.messages.find((m: any) => m.id === messageId)
+  if (clientMessage) {
+    clientMessage.content = newContent
+  }
+}
+
 </script>
 
 <template>
@@ -286,8 +326,8 @@ watch(
                   v-if="extractLandingPageFromMessage(message)"
                   :landing-page="extractLandingPageFromMessage(message)"
                   :is-canvas-visible="isCanvasVisible"
-                  @open="openCanvasWithLandingPage"
-                  @toggle="(landingPage) => isCanvasVisible ? hideCanvas() : openCanvasWithLandingPage(landingPage)"
+                  @open="(landingPage) => openCanvasWithLandingPage(landingPage, message.id)"
+                  @toggle="(landingPage) => isCanvasVisible ? hideCanvas() : openCanvasWithLandingPage(landingPage, message.id)"
                 />
 
                 <!-- Training URL UI -->
@@ -309,8 +349,8 @@ watch(
                   :total-count="extractAllPhishingEmailsFromMessage(message).length"
                   :is-canvas-visible="isCanvasVisible"
                   :is-quishing="email.isQuishing"
-                  @open="(email) => openCanvasWithEmail(email)"
-                  @toggle="(email) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(email)"
+                  @open="(email) => openCanvasWithEmail(email, message.id)"
+                  @toggle="(email) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(email, message.id)"
                 />
 
                 <!-- Reasoning (shown above content, also during streaming) -->
@@ -367,11 +407,12 @@ watch(
           v-if="isCanvasVisible"
           class="w-full lg:w-3/4 border-l border-gray-200 dark:border-gray-800 transition-all duration-300 sticky top-(--ui-header-height) self-start h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden flex flex-col relative"
         >
-          <ChatCanvas 
+          <ChatCanvas
             ref="canvasRef"
-            class="absolute inset-0 h-full w-full"
+            class="flex-1 min-h-0"
             @close="hideCanvas"
             @clear="() => clearCanvasContent()"
+            @refresh="handleCanvasRefresh"
           />
         </div>
       </div>

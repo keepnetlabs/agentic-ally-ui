@@ -22,75 +22,18 @@
         </div>
 
         <!-- Email Template -->
-        <div v-else-if="content.type === 'email'" class="h-full min-h-0 flex flex-col">
-          <div class="bg-white dark:bg-gray-900 border-0 rounded-none flex-1 min-h-0 flex flex-col">
-            <!-- Email Header -->
-            <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between" style="background-color: var(--bg-ui);">
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-mail" class="w-4 h-4" />
-                <div class="text-xs text-muted-foreground space-y-1">
-                  <div><strong>From:</strong> {{ content.from || 'sender@example.com' }}</div>
-                  <div><strong>To:</strong> {{ content.to || 'recipient@example.com' }}</div>
-                  <div><strong>Subject:</strong> {{ content.subject || 'Email Subject' }}</div>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <!-- View Mode Buttons -->
-                <div class="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-2 mr-2">
-                  <UButton
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-smartphone"
-                    :color="emailViewMode === 'mobile' ? 'primary' : 'neutral'"
-                    @click="setEmailViewMode('mobile')"
-                    class="transition-colors"
-                  />
-                  <UButton
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-tablet"
-                    :color="emailViewMode === 'tablet' ? 'primary' : 'neutral'"
-                    @click="setEmailViewMode('tablet')"
-                    class="transition-colors"
-                  />
-                  <UButton
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-monitor"
-                    :color="emailViewMode === 'desktop' ? 'primary' : 'neutral'"
-                    @click="setEmailViewMode('desktop')"
-                    class="transition-colors"
-                  />
-                </div>
-                <UButton
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-x"
-                  @click="$emit('close')"
-                  class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                />
-              </div>
-            </div>
-            
-            <!-- Email Body -->
-            <div class="relative flex-1 min-h-0 bg-gray-100 dark:bg-gray-950 flex items-center justify-center overflow-auto">
-              <div :class="[
-                'transition-all duration-300 bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden my-4',
-                {
-                  'w-[450px]': emailViewMode === 'mobile',
-                  'w-[820px]': emailViewMode === 'tablet',
-                  'w-full rounded-none shadow-none my-0': emailViewMode === 'desktop'
-                }
-              ]">
-                <div class="flex-1 overflow-auto p-4">
-                  <div class="prose dark:prose-invert max-w-none">
-                    <div v-html="content.body"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <EmailCanvas
+          v-if="content.type === 'email'"
+          :body="content.body || ''"
+          :from="content.from"
+          :to="content.to"
+          :subject="content.subject"
+          :message-id="content.messageId"
+          :chat-id="content.chatId"
+          @close="$emit('close')"
+          @refresh="(messageId, newContent) => $emit('refresh', messageId, newContent)"
+          @edit="openHTMLEditor('email')"
+        />
 
         <!-- Code Preview -->
         <div v-else-if="content.type === 'code'" class="space-y-4">
@@ -121,59 +64,73 @@
               <div class="flex items-center gap-2">
                 <!-- View Mode Buttons -->
                 <div class="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-2 mr-2">
-                  <UButton
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-smartphone"
-                    :color="viewMode === 'mobile' ? 'primary' : 'neutral'"
-                    @click="setViewMode('mobile')"
-                    class="transition-colors"
-                  />
-                  <UButton
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-tablet"
-                    :color="viewMode === 'tablet' ? 'primary' : 'neutral'"
-                    @click="setViewMode('tablet')"
-                    class="transition-colors"
-                  />
-                  <UButton
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-monitor"
-                    :color="viewMode === 'desktop' ? 'primary' : 'neutral'"
-                    @click="setViewMode('desktop')"
-                    class="transition-colors"
-                  />
+                  <UTooltip text="Mobile view">
+                    <UButton
+                      variant="ghost"
+                      size="sm"
+                      icon="i-lucide-smartphone"
+                      :color="viewMode === 'mobile' ? 'primary' : 'neutral'"
+                      @click="setViewMode('mobile')"
+                      class="transition-colors"
+                    />
+                  </UTooltip>
+                  <UTooltip text="Tablet view">
+                    <UButton
+                      variant="ghost"
+                      size="sm"
+                      icon="i-lucide-tablet"
+                      :color="viewMode === 'tablet' ? 'primary' : 'neutral'"
+                      @click="setViewMode('tablet')"
+                      class="transition-colors"
+                    />
+                  </UTooltip>
+                  <UTooltip text="Desktop view">
+                    <UButton
+                      variant="ghost"
+                      size="sm"
+                      icon="i-lucide-monitor"
+                      :color="viewMode === 'desktop' ? 'primary' : 'neutral'"
+                      @click="setViewMode('desktop')"
+                      class="transition-colors"
+                    />
+                  </UTooltip>
                 </div>
-                <UButton
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-external-link"
-                  @click="openInNewTab"
-                  class="text-gray-500 hover:text-gray-700"
-                />
-                <UButton
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-refresh-cw"
-                  @click="refreshIframe"
-                  class="text-gray-500 hover:text-gray-700"
-                />
-                <UButton
-                  variant="ghost"
-                  size="sm"
-                  :icon="isFullscreen ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
-                  @click="toggleFullscreen"
-                  class="text-gray-500 hover:text-gray-700"
-                />
-                <UButton
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-x"
-                  @click="$emit('close')"
-                  class="text-gray-500 hover:text-gray-700"
-                />
+                <UTooltip text="Open in new tab">
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-external-link"
+                    @click="openInNewTab"
+                    class="text-gray-500 hover:text-gray-700"
+                  />
+                </UTooltip>
+                <UTooltip text="Refresh">
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-refresh-cw"
+                    @click="refreshIframe"
+                    class="text-gray-500 hover:text-gray-700"
+                  />
+                </UTooltip>
+                <UTooltip :text="isFullscreen ? 'Exit fullscreen' : 'Toggle fullscreen'">
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    :icon="isFullscreen ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
+                    @click="toggleFullscreen"
+                    class="text-gray-500 hover:text-gray-700"
+                  />
+                </UTooltip>
+                <UTooltip text="Close">
+                  <UButton
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-x"
+                    @click="$emit('close')"
+                    class="text-gray-500 hover:text-gray-700"
+                  />
+                </UTooltip>
               </div>
             </div>
             
@@ -237,7 +194,13 @@
 
         <!-- Landing Page -->
         <div v-else-if="content.type === 'landing-page' && content.landingPage" class="h-full min-h-0 flex flex-col">
-          <LandingPageCanvas :landing-page="content.landingPage" @close="$emit('close')" />
+          <LandingPageCanvas
+            :landing-page="content.landingPage"
+            :message-id="content.messageId"
+            :chat-id="content.chatId"
+            @close="$emit('close')"
+            @refresh="(messageId, newContent) => $emit('refresh', messageId, newContent)"
+          />
         </div>
 
         <!-- Generic Content -->
@@ -246,6 +209,15 @@
         </div>
       </div>
     </div>
+
+    <!-- HTML Editor Modal -->
+    <HTMLEditorModal
+      v-if="showHTMLEditor && editingContent"
+      :html="editingContent.html"
+      :type="editingContent.type"
+      @save="handleEditorSave"
+      @close="handleEditorClose"
+    />
   </div>
 </template>
 
@@ -253,7 +225,7 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useRoute } from 'vue-router'
-import type { LandingPage } from '../types/chat'
+import type { LandingPage, ServerMessage } from '../types/chat'
 
 interface CanvasContent {
   type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url' | 'landing-page'
@@ -268,11 +240,15 @@ interface CanvasContent {
   subject?: string
   url?: string
   landingPage?: LandingPage
+  messageId?: string
+  chatId?: string
+  emailData?: { template: string; fromAddress?: string; fromName?: string; subject?: string }
 }
 
 const emit = defineEmits<{
   close: []
   clear: []
+  refresh: [messageId: string, newContent: string]
 }>()
 
 const route = useRoute()
@@ -336,7 +312,8 @@ const copyCode = () => {
 const containerRef = ref<HTMLElement | null>(null)
 const isFullscreen = ref(false)
 const viewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
-const emailViewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
+const showHTMLEditor = ref(false)
+const editingContent = ref<{ html: string; type: 'email' | 'landing-page' } | null>(null)
 
 const onFsChange = () => {
   isFullscreen.value = !!document.fullscreenElement
@@ -344,10 +321,6 @@ const onFsChange = () => {
 
 const setViewMode = (mode: 'mobile' | 'tablet' | 'desktop') => {
   viewMode.value = mode
-}
-
-const setEmailViewMode = (mode: 'mobile' | 'tablet' | 'desktop') => {
-  emailViewMode.value = mode
 }
 
 const toggleFullscreen = async () => {
@@ -411,6 +384,89 @@ const openInNewTab = () => {
       window.open(urlWithoutParams, '_blank', 'noopener,noreferrer')
     }
   }
+}
+
+const openHTMLEditor = (type: 'email' | 'landing-page') => {
+  const html = type === 'email' ? content.value?.body : content.value?.html
+  if (html) {
+    editingContent.value = { html, type }
+    showHTMLEditor.value = true
+  }
+}
+
+const handleEditorSave = async (newHtml: string) => {
+  if (!editingContent.value || !content.value) return
+
+  // Capture values before async operations (to avoid race conditions)
+  const contentType = editingContent.value.type
+  const emailData = content.value.emailData
+  const messageId = content.value.messageId
+  const chatId = content.value.chatId
+
+  // Update local content
+  if (contentType === 'email') {
+    content.value.body = newHtml
+    // Also update emailData to keep it in sync
+    if (content.value.emailData) {
+      content.value.emailData.template = newHtml
+    }
+  } else {
+    content.value.html = newHtml
+  }
+
+  // Save to backend if we have message and chat ID
+  if (messageId && chatId) {
+    try {
+      // First, fetch the current message to preserve other content
+      const currentMessage = await $fetch<ServerMessage>(`/api/chats/${chatId}/messages/${messageId}`)
+      let fullContent = currentMessage?.content || ''
+
+      // For emails, replace only the email wrapper
+      if (contentType === 'email' && emailData) {
+        // Update template in emailData
+        const updatedEmailData = {
+          ...emailData,
+          template: newHtml
+        }
+        // Encode as base64
+        const emailJson = JSON.stringify(updatedEmailData)
+        const base64Email = btoa(unescape(encodeURIComponent(emailJson)))
+        const newEmailWrapper = `::ui:phishing_email::${base64Email}::/ui:phishing_email::`
+
+        // Replace the email wrapper in the full content
+        if (fullContent.includes('::ui:phishing_email::')) {
+          fullContent = fullContent.replace(
+            /::ui:phishing_email::[\s\S]+?::\/ui:phishing_email::/g,
+            newEmailWrapper
+          )
+        } else {
+          // If no email wrapper exists, append it
+          fullContent += '\n' + newEmailWrapper
+        }
+      }
+
+      await $fetch(`/api/chats/${chatId}/messages/${messageId}`, {
+        method: 'PUT',
+        body: {
+          content: fullContent
+        }
+      })
+      console.log('Template saved successfully')
+
+      // Emit refresh event with updated content to update local state
+      emit('refresh', messageId, fullContent)
+    } catch (error) {
+      console.error('Failed to save template:', error)
+    }
+  }
+
+  showHTMLEditor.value = false
+  editingContent.value = null
+}
+
+const handleEditorClose = () => {
+  showHTMLEditor.value = false
+  editingContent.value = null
 }
 
 // Expose methods for parent components

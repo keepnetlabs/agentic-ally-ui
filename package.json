@@ -28,6 +28,8 @@
     "ai": "^5.0.76",
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.44.5",
+    "grapesjs": "^0.22.14",
+    "grapesjs-preset-newsletter": "^1.0.2",
     "nuxt": "^4.0.3",
     "nuxt-auth-utils": "^0.5.23",
     "pdfjs-serverless": "^1.1.0",

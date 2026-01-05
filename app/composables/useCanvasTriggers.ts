@@ -35,7 +35,7 @@ export const useCanvasTriggers = (
         })
     }
 
-    const openCanvasWithEmail = async (emailData: { template: string; fromAddress?: string; fromName?: string; subject?: string } | string) => {
+    const openCanvasWithEmail = async (emailData: { template: string; fromAddress?: string; fromName?: string; subject?: string } | string, messageId?: string) => {
         // Support both old string format and new object format
         const isString = typeof emailData === 'string'
         const template = isString ? emailData : emailData.template
@@ -63,11 +63,14 @@ export const useCanvasTriggers = (
             body: body,
             from: from,
             to: 'user@company.com',
-            subject: subject || 'Security Awareness Training Email'
+            subject: subject || 'Security Awareness Training Email',
+            messageId: messageId,
+            chatId: route.params.id as string,
+            emailData: isString ? undefined : emailData
         })
     }
 
-    const openCanvasWithLandingPage = async (landingPage: any) => {
+    const openCanvasWithLandingPage = async (landingPage: any, messageId?: string) => {
         if (!landingPage || !landingPage.pages || landingPage.pages.length === 0) return
         if (!isCanvasVisible.value) {
             toggleCanvas()
@@ -78,7 +81,9 @@ export const useCanvasTriggers = (
         canvasRef.value?.updateContent({
             type: 'landing-page',
             landingPage: landingPage,
-            title: landingPage.name || 'Landing Page'
+            title: landingPage.name || 'Landing Page',
+            messageId: messageId,
+            chatId: route.params.id as string
         })
     }
 
@@ -125,8 +130,8 @@ export const useCanvasTriggers = (
                     // Parse JSON to get PhishingEmail object
                     const emailObj = JSON.parse(decoded)
                     hasEmailRenderedForCurrentMessage.value = true
-                    // Pass the entire email object
-                    openCanvasWithEmail(emailObj)
+                    // Pass the entire email object with message ID
+                    openCanvasWithEmail(emailObj, message.id)
                 } catch (error) {
                     console.error('Failed to decode base64 phishing email in stream:', error)
                 }
@@ -138,7 +143,7 @@ export const useCanvasTriggers = (
             const landingPage = extractLandingPageFromMessage(message)
             if (landingPage) {
                 hasLandingPageRenderedForCurrentMessage.value = true
-                openCanvasWithLandingPage(landingPage)
+                openCanvasWithLandingPage(landingPage, message.id)
             }
         }
     }
