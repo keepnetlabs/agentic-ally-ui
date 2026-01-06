@@ -10,6 +10,14 @@ defineRouteMeta({
   }
 })
 
+// Helper: remove training metadata from content
+const cleanMetadata = (obj: any) => {
+  const metadataPattern = /::ui:training_meta::[\s\S]*?:\/ui:training_meta::/g
+  if (obj.text) obj.text = obj.text.replace(metadataPattern, '')
+  if (obj.delta) obj.delta = obj.delta.replace(metadataPattern, '')
+  return obj
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
 
@@ -87,7 +95,7 @@ export default defineEventHandler(async (event) => {
   console.log('FLEET_AGENT_URL', process.env.FLEET_AGENT_URL)
 
   try {
-    const accessToken = getHeader(event, 'x-agentic-ally-token') || 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3NjcwODA3NTQsImV4cCI6MTc2NzE2NzE1NCwiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY3MDgwNzU0LCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiM0MxQ0QzOEFERDkwREE0MURCRDU3NDIxODI0MzQyNDYiLCJpYXQiOjE3NjcwODA3NTQsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.pUNg62TNmPU2CR5lgWr5D8oHF1oEggpwYDNN00Wfzv_zyMkGxvcgs7DH-LdO4ZeoyfYFQY7GpWN07Hm6B05z__xOgorMukyS0hZpKfoVjbdomZiZ7hUcXbOQD6M68tl5rxqkLyFhs3sFP4biOHX1jlTzcSiMDsKwlgv3rlYoT0CeY7MJagWVhsBTPAWrxrZgXcAOFI6MOHeXUY6pvqZR5Vifl0PJWQ2gjbX2hnxMdvT8Xmt6OC_TuCRSk8z-oL29V26rd2HWfVkYDNsTSj71Doo_WX2ditup6b9uziSPLR-_rV-mYgKrJ_Ds-pLnLTXIuk9vaxLYZ_EzYgf1HJlkvQ'
+    const accessToken = getHeader(event, 'x-agentic-ally-token') || 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3Njc2ODY0MDMsImV4cCI6MTc2Nzc3MjgwMywiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY3Njg2NDAzLCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiMTI0NTQ0NDZDMzM2REM2MzAxN0Q4NkY0MDNEOTJDRjEiLCJpYXQiOjE3Njc2ODY0MDMsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.HfD9zov0S8ppx8VIAcaMv55paytCIJ7-eBxa4cP3QFiaNwBMc3v45-96fItdv8Axst3TNG-55Nu4QGWaphoE1xmA17vAiRAu__3gUk-iMF_5M1Cm8rF1Bv0Sw9Wzw2a_GZi4FfYQDfe82sjxKW2aFtL4ZbCUaYx3MgvDnzpxZYayxspNU6-dHqf1J5J2gA7ZJ7fWApOvjPP2OhVLPd-9H89SXdw5OgGMm5ugKjVL2HAdygFvRCwnd5JfNkkGIVPC_KBzZ1OsMH9bRe_5bvs7M5EmZ7E68d100O1QRb3WByiw4XotdGBrIt3J1Q3ZDryxiO_KOqfyhKBEcd6FNJCBpQ'
     console.log('accessToken', accessToken)
     console.log('companyId', companyId)
     console.log('policyUrls', policyUrls)
@@ -162,6 +170,8 @@ export default defineEventHandler(async (event) => {
             try {
               const obj = JSON.parse(jsonText)
               if (obj && typeof obj === 'object' && typeof obj.type === 'string') {
+                // Clean metadata from content
+                cleanMetadata(obj)
                 // Generate unique ID for text-start events if missing
                 if ((obj.type === 'text-start' || obj.type === 'text-delta' || obj.type === 'text-end') && !obj.id) {
                   if (obj.type === 'text-start') {

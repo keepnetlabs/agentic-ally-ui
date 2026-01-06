@@ -128,6 +128,7 @@ export function getSanitizedContentForTemplate(msg: any): string {
     const content = (msg?.content || '') + ''
     return content
         .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
+        .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
         .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
 }
