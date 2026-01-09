@@ -3,6 +3,7 @@
 import { LazyModalConfirm } from '#components'
 import { useCanvas } from '../composables/useCanvas'
 import { useChatNavigation } from '../composables/useChatNavigation'
+import { useRouteParams } from '../composables/useRouteParams'
 const { isCanvasVisible, hideCanvas } = useCanvas()
 
 const route = useRoute()
@@ -13,44 +14,23 @@ const overlay = useOverlay()
 // Get streaming state
 const { isStreaming, stopStreaming, streamingChatId } = useChatNavigation()
 
+// Get route params helper
+const { buildUrl } = useRouteParams()
+
 const open = ref(false)
 
-// Get sessionId from URL query (passed by parent iframe)
-const sessionId = route.query.sessionId as string
+// Build URLs with query params
+const homeUrl = computed(() => buildUrl('/'))
+const filesUrl = computed(() => buildUrl('/files'))
 
-// Build home URL with all params from route query
-const homeUrl = computed(() => {
-  const params = new URLSearchParams()
-  if (sessionId) params.append('sessionId', sessionId)
+// Button attributes based on collapsed state
+const newChatAttrs = computed(() =>
+  isCanvasVisible.value ? { icon: 'i-lucide-plus' } : { label: 'New chat' }
+)
 
-  const accessToken = route.query.accessToken as string
-  const baseApiUrl = route.query.baseApiUrl as string
-  const companyId = route.query.companyId as string
-
-  if (accessToken) params.append('accessToken', accessToken)
-  if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
-  if (companyId) params.append('companyId', companyId)
-
-  const queryString = params.toString()
-  return `/${queryString ? '?' + queryString : ''}`
-})
-
-// Build files URL with all params from route query
-const filesUrl = computed(() => {
-  const params = new URLSearchParams()
-  if (sessionId) params.append('sessionId', sessionId)
-
-  const accessToken = route.query.accessToken as string
-  const baseApiUrl = route.query.baseApiUrl as string
-  const companyId = route.query.companyId as string
-
-  if (accessToken) params.append('accessToken', accessToken)
-  if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
-  if (companyId) params.append('companyId', companyId)
-
-  const queryString = params.toString()
-  return `/files${queryString ? '?' + queryString : ''}`
-})
+const filesAttrs = computed(() =>
+  isCanvasVisible.value ? { icon: 'i-lucide-folder' } : { icon: 'i-lucide-folder', label: 'Files' }
+)
 
 const deleteModal = overlay.create(LazyModalConfirm, {
   props: {
@@ -61,38 +41,25 @@ const deleteModal = overlay.create(LazyModalConfirm, {
   }
 })
 
-const chatsUrl = sessionId ? `/api/chats?sessionId=${sessionId}` : '/api/chats'
+const sessionId = route.query.sessionId as string
+const chatsUrl = buildUrl('/api/chats')
 
 const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   key: 'chats',
-  transform: data => data.map(chat => {
-    // Build URL with route query params
-    const params = new URLSearchParams()
-    if (sessionId) params.append('sessionId', sessionId)
-
-    const accessToken = route.query.accessToken as string
-    const baseApiUrl = route.query.baseApiUrl as string
-
-    if (accessToken) params.append('accessToken', accessToken)
-    if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
-
-    const queryString = params.toString()
-
-    return {
-      id: chat.id,
-      label: chat.title || 'Untitled',
-      to: `/chat/${chat.id}${queryString ? '?' + queryString : ''}`,
-      icon: 'i-lucide-message-circle',
-      createdAt: chat.createdAt
-    }
-  })
+  transform: data => data.map(chat => ({
+    id: chat.id,
+    label: chat.title || 'Untitled',
+    to: buildUrl(`/chat/${chat.id}`),
+    icon: 'i-lucide-message-circle',
+    createdAt: chat.createdAt
+  }))
 })
 
 onNuxtReady(async () => {
   const first10 = (chats.value || []).slice(0, 10)
   for (const chat of first10) {
     // prefetch the chat and let the browser cache it
-    const prefetchUrl = sessionId ? `/api/chats/${chat.id}?sessionId=${sessionId}` : `/api/chats/${chat.id}`
+    const prefetchUrl = buildUrl(`/api/chats/${chat.id}`)
     await $fetch(prefetchUrl)
   }
 })
@@ -151,7 +118,7 @@ async function deleteChat(id: string) {
     return
   }
 
-  const deleteUrl = sessionId ? `/api/chats/${id}?sessionId=${sessionId}` : `/api/chats/${id}`
+  const deleteUrl = buildUrl(`/api/chats/${id}`)
   await $fetch(deleteUrl, { method: 'DELETE' })
 
   toast.add({
@@ -201,11 +168,11 @@ defineShortcuts({
       <template #default="{ collapsed }">
         <div class="flex flex-col gap-1.5">
           <UButton
-            v-bind="collapsed ? { icon: 'i-lucide-plus' } : { label: 'New chat' }"
+            v-bind="newChatAttrs"
             block
             :to="homeUrl"
             variant="outline"
-            :ui="{ 
+            :ui="{
               base: 'rounded border border-[#B3D4FC] bg-[#F1F8FE] text-[#2196F3] hover:bg-[#E3F0FD] dark:border-white dark:bg-black dark:text-white dark:hover:bg-gray-900 font-semibold text-sm leading-5',
               font: 'font-sans'
             }"
@@ -213,7 +180,7 @@ defineShortcuts({
           />
 
           <UButton
-            v-bind="collapsed ? { icon: 'i-lucide-folder' } : { label: 'Files' }"
+            v-bind="filesAttrs"
             block
             :to="filesUrl"
             variant="ghost"

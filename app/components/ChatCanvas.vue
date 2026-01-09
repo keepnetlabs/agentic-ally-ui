@@ -224,7 +224,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import { useRoute } from 'vue-router'
+import { useRouteParams } from '../composables/useRouteParams'
 import type { LandingPage, ServerMessage } from '../types/chat'
 
 interface CanvasContent {
@@ -251,9 +251,9 @@ const emit = defineEmits<{
   refresh: [messageId: string, newContent: string]
 }>()
 
-const route = useRoute()
 const content = ref<CanvasContent | null>(null)
 const { copy } = useClipboard()
+const { accessToken, baseApiUrl } = useRouteParams()
 
 // Build iframe URL with accessToken and baseApiUrl from route query
 const iframeUrl = computed(() => {
@@ -261,15 +261,13 @@ const iframeUrl = computed(() => {
 
   try {
     const url = new URL(content.value.url)
-    const accessToken = route.query.accessToken as string
-    const baseApiUrl = route.query.baseApiUrl as string
 
-    if (accessToken) {
-      url.searchParams.append('accessToken', accessToken)
+    if (accessToken.value) {
+      url.searchParams.append('accessToken', accessToken.value)
     }
 
-    if (baseApiUrl) {
-      url.searchParams.append('baseApiUrl', baseApiUrl)
+    if (baseApiUrl.value) {
+      url.searchParams.append('baseApiUrl', baseApiUrl.value)
     }
 
     return url.toString()

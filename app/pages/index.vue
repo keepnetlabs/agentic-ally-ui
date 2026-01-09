@@ -1,13 +1,10 @@
 <script setup lang="ts">
 const input = ref('')
 const loading = ref(false)
-const route = useRoute()
 const colorMode = useColorMode()
 
 const { model } = useLLM()
-
-// Get sessionId from URL query (passed by parent iframe)
-const sessionId = route.query.sessionId as string
+const { buildUrl, accessToken, companyId, baseApiUrl } = useRouteParams()
 
 // Image based on color mode
 const imageUrl = computed(() => {
@@ -20,11 +17,16 @@ async function createChat(prompt: string) {
   loading.value = true
   try {
     console.log('Creating chat with prompt:', prompt)
-    const url = sessionId ? `/api/chats?sessionId=${sessionId}` : '/api/chats'
+    const url = buildUrl('/api/chats')
     const chat = await $fetch(url, {
       method: 'POST',
       body: { prompt },
-      credentials: 'include'
+      credentials: 'include',
+      headers: {
+        ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
+        ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
+        ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
+      }
     })
     console.log('Chat created:', chat)
     console.log('Chat ID:', chat?.id)
@@ -37,16 +39,7 @@ async function createChat(prompt: string) {
 
     refreshNuxtData('chats')
 
-    // Build chat URL with all query parameters (sessionId, accessToken, baseApiUrl)
-    const params = new URLSearchParams()
-    if (sessionId) params.append('sessionId', sessionId)
-    const accessToken = route.query.accessToken as string
-    if (accessToken) params.append('accessToken', accessToken)
-    const baseApiUrl = route.query.baseApiUrl as string
-    if (baseApiUrl) params.append('baseApiUrl', baseApiUrl)
-
-    const queryString = params.toString()
-    const chatUrl = `/chat/${chat.id}${queryString ? '?' + queryString : ''}`
+    const chatUrl = buildUrl(`/chat/${chat.id}`)
     navigateTo(chatUrl)
   } catch(e) {
     console.error('Error creating chat:', e)

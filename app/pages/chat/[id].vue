@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 // @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
@@ -8,6 +8,7 @@ import { useLLM } from '../../composables/useLLM'
 import { useCanvas } from '../../composables/useCanvas'
 import { useCanvasTriggers } from '../../composables/useCanvasTriggers'
 import { useChatClient } from '../../composables/useChatClient'
+import { useRouteParams } from '../../composables/useRouteParams'
 import { parseError } from '../../utils/error-handler'
 import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
@@ -29,13 +30,13 @@ const clipboard = useClipboard()
 const { model } = useLLM()
 const { isCanvasVisible, toggleCanvas, hideCanvas, clearCanvasContent } = useCanvas()
 const { getModelConfig, createHandleSubmit, createStop, createReload, createMessages, createStatus, createErrorComputed } = useChatClient()
+const { buildUrl, accessToken, companyId, baseApiUrl } = useRouteParams()
 
 const chatId = String(route.params.id)
 
-// Get sessionId from URL query (passed by parent iframe)
-const sessionId = route.query.sessionId as string
+const chatUrl = buildUrl(`/api/chats/${chatId}`)
 
-const chatUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
+const isComponentActive = ref(true)
 
 /**
  * Save message with exponential backoff + jitter retry
@@ -48,13 +49,14 @@ const saveMessageWithRetry = async (
   startTime = Date.now(),
   config: RetryConfig = DEFAULT_RETRY_CONFIG
 ) => {
+  if (!isComponentActive.value) {
+    return false
+  }
   const maxRetries = config.maxRetries || DEFAULT_RETRY_CONFIG.maxRetries!
   const deadline = config.deadline || DEFAULT_RETRY_CONFIG.deadline!
 
   try {
-    const messagesUrl = sessionId
-      ? `/api/chats/${chatId}/messages?sessionId=${sessionId}`
-      : `/api/chats/${chatId}/messages`
+    const messagesUrl = buildUrl(`/api/chats/${chatId}/messages`)
 
     await $fetch(messagesUrl, {
       method: 'POST',
@@ -64,15 +66,22 @@ const saveMessageWithRetry = async (
         content: content
       },
       headers: {
-        ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
-        ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
+        ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
+        ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
+        ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
       }
     })
 
     // Success - silent success, no toast (only notify on errors)
     console.log('AI message saved successfully')
+    if (!isComponentActive.value) {
+      return false
+    }
     return true
   } catch (error) {
+    if (!isComponentActive.value) {
+      return false
+    }
     const elapsed = Date.now() - startTime
 
     // Check deadline first
@@ -117,6 +126,9 @@ const saveMessageWithRetry = async (
 
     // Auto-retry with delay
     await new Promise(resolve => setTimeout(resolve, delay))
+    if (!isComponentActive.value) {
+      return false
+    }
     return saveMessageWithRetry(messageId, content, attempt + 1, startTime, config)
   }
 }
@@ -134,9 +146,7 @@ if (!chat.value) {
 
 const input = ref('')
 
-const streamUrl = sessionId ? `/api/chats/${chatId}?sessionId=${sessionId}` : `/api/chats/${chatId}`
-const accessToken = route.query.accessToken as string
-const companyId = route.query.companyId as string
+const streamUrl = buildUrl(`/api/chats/${chatId}`)
 
 const chatClient = new Chat({
   id: chatId,
@@ -148,8 +158,9 @@ const chatClient = new Chat({
         ...init,
         headers: {
           ...(init?.headers || {}),
-          ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
-          ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
+          ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
+          ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
+          ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
         }
       })
     }
@@ -199,6 +210,10 @@ const lastFinishedMessageId = ref<string | null>(null)
 const handleSubmit = createHandleSubmit(chatClient, input, messages, status, lastFinishedMessageId)
 
 const stop = createStop()
+onBeforeUnmount(() => {
+  isComponentActive.value = false
+  stop()
+})
 const reload = createReload(chatClient)
 
 // Track streaming state for navigation

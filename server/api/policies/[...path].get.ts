@@ -129,7 +129,7 @@ export default defineEventHandler(async (event) => {
     headers['Access-Control-Allow-Origin'] = '*'
   }
   headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-  headers['Access-Control-Allow-Headers'] = 'Content-Type, x-company-id, x-agentic-ally-token'
+  headers['Access-Control-Allow-Headers'] = 'Content-Type, x-company-id, x-agentic-ally-token, x-base-api-url'
   headers['Access-Control-Allow-Credentials'] = 'true'
 
   return new Response(JSON.stringify({

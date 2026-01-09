@@ -68,6 +68,7 @@ export default defineEventHandler(async (event) => {
 
   // Fetch policy URLs for company context
   const companyId = extractCompanyId(event) || getHeader(event, 'x-company-id')
+  const baseApiUrl = getHeader(event, 'x-base-api-url')
   let policyUrls: string[] = []
 
   if (companyId) {
@@ -95,16 +96,18 @@ export default defineEventHandler(async (event) => {
   console.log('FLEET_AGENT_URL', process.env.FLEET_AGENT_URL)
 
   try {
-    const accessToken = getHeader(event, 'x-agentic-ally-token') || 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3Njc2ODY0MDMsImV4cCI6MTc2Nzc3MjgwMywiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY3Njg2NDAzLCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiMTI0NTQ0NDZDMzM2REM2MzAxN0Q4NkY0MDNEOTJDRjEiLCJpYXQiOjE3Njc2ODY0MDMsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.HfD9zov0S8ppx8VIAcaMv55paytCIJ7-eBxa4cP3QFiaNwBMc3v45-96fItdv8Axst3TNG-55Nu4QGWaphoE1xmA17vAiRAu__3gUk-iMF_5M1Cm8rF1Bv0Sw9Wzw2a_GZi4FfYQDfe82sjxKW2aFtL4ZbCUaYx3MgvDnzpxZYayxspNU6-dHqf1J5J2gA7ZJ7fWApOvjPP2OhVLPd-9H89SXdw5OgGMm5ugKjVL2HAdygFvRCwnd5JfNkkGIVPC_KBzZ1OsMH9bRe_5bvs7M5EmZ7E68d100O1QRb3WByiw4XotdGBrIt3J1Q3ZDryxiO_KOqfyhKBEcd6FNJCBpQ'
+    const accessToken = getHeader(event, 'x-agentic-ally-token') || 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3Njc5NjE3NzYsImV4cCI6MTc2ODA0ODE3NiwiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY3OTYxNzc2LCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiNDMwRjU1QTEzODczQTdERTc4NTgwMTU2QTZCQkQyQUMiLCJpYXQiOjE3Njc5NjE3NzYsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.FWtZASl0ZRVL3XnZO4iTFBX50OFFJKvY9vE-EIUM_tSfsVLtP8885mh5y2AvK2qRgVNlK23BSm2RSjInyai-qGILsSplbJG8xOZvPGaLfkuOnjWQGPAyBJxcYzJWs2S_UbmZ1W-kAvgS2GBJMbhV3_MLGPbcONeVi0GKjOkUbqmQKuJZ-QC365PJ0clLrXva5RglKMz64R7y97wWQnRaK4oQowYv8bjbJr-8i4yq8ZIDJAR9PWIPG8Pl9EHjPwaA6Xn-t94PE5iEMvJ9t0A0dc8Zbkmq72YX0Xa0iYy6UUSrsTMEwznICHYiJ9gilKB_N0XMTi950MGhU1YXJ8ZSRw'
     console.log('accessToken', accessToken)
     console.log('companyId', companyId)
+    console.log('baseApiUrl', baseApiUrl)
     console.log('policyUrls', policyUrls)
     const response = await fetch(process.env.FLEET_AGENT_URL!, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         ...(accessToken ? { 'X-AGENTIC-ALLY-TOKEN': accessToken } : {}),
-        ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
+        ...(companyId ? { 'X-COMPANY-ID': companyId } : {}),
+        ...(baseApiUrl ? { 'X-BASE-API-URL': baseApiUrl } : {})
       },
       body: JSON.stringify({ modelProvider, model, messages, conversationId, policyUrls })
     })
