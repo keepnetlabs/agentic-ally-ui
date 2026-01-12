@@ -269,20 +269,25 @@ onBeforeUnmount(() => {
 
 /* Panel buttons - Optimized size */
 .gjs-pn-btn {
-  padding: 8px 10px !important;
+  padding: 0 !important;
   background-color: #4b5563 !important;
   color: white !important;
   border: 1px solid #6b7280 !important;
   border-radius: 4px !important;
   margin: 2px !important;
-  min-width: 40px !important;
-  min-height: 40px !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .gjs-pn-btn i {
   display: inline-block !important;
-  font-size: 20px !important;
-  line-height: 20px !important;
+  font-size: 14px !important;
+  line-height: 14px !important;
   color: white !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -293,8 +298,8 @@ onBeforeUnmount(() => {
 
 .gjs-pn-btn svg {
   display: inline-block !important;
-  width: 20px !important;
-  height: 20px !important;
+  width: 14px !important;
+  height: 14px !important;
   fill: white !important;
   stroke: white !important;
   opacity: 1 !important;
@@ -314,7 +319,7 @@ onBeforeUnmount(() => {
 .gjs-pn-btn .fas,
 .gjs-pn-btn .far,
 .gjs-pn-btn .fab {
-  font-size: 20px !important;
+  font-size: 14px !important;
   color: white !important;
   opacity: 1 !important;
   display: inline-block !important;
@@ -332,10 +337,17 @@ onBeforeUnmount(() => {
   color: white !important;
   opacity: 1 !important;
   visibility: visible !important;
-  padding: 6px !important;
+  height: 92px !important;
+  min-height: 92px !important;
+  padding: 10px 10px !important;
   margin: 3px !important;
   border-radius: 4px !important;
   border: 1px solid #6b7280 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
 }
 
 /* Special GrapesJS block classes - smaller with dark background */
@@ -344,29 +356,91 @@ onBeforeUnmount(() => {
 .gjs-block.gjs-one-bg.gjs-four-color-h {
   background-color: #4b5563 !important;
   color: white !important;
-  padding: 6px !important;
+  height: 92px !important;
+  min-height: 92px !important;
+  padding: 10px 10px !important;
 }
 
-.gjs-block svg,
 .gjs-block i {
   fill: white !important;
   color: white !important;
-  font-size: 18px !important;
+  font-size: 20px !important;
+  width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  text-align: center !important;
+  display: inline-block !important;
+  opacity: 1 !important;
+}
+
+.gjs-block svg {
+  fill: white !important;
+  color: white !important;
+  width: 48px !important;
+  height: 48px !important;
   display: inline-block !important;
   opacity: 1 !important;
 }
 
 .gjs-block__media {
   opacity: 1 !important;
-  display: block !important;
-  margin-bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 40px !important;
+  height: 40px !important;
+  margin: 0 !important;
+}
+
+.gjs-block__media svg {
+  width: 40px !important;
+  height: 40px !important;
 }
 
 .gjs-block-label {
   color: inherit !important;
   opacity: 1 !important;
   font-size: 11px !important;
-  margin-top: 6px !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+  width: 100% !important;
+  display: block !important;
+}
+
+/* Responsive: smaller icons on smaller screens */
+@media (max-width: 1024px) {
+  .gjs-block svg {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .gjs-block__media {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .gjs-block-label {
+    font-size: 10px !important;
+    line-height: 1.15 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .gjs-block svg {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .gjs-block__media {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .gjs-block-label {
+    font-size: 9px !important;
+    line-height: 1.1 !important;
+  }
 }
 
 /* Toolbar icons on canvas elements */
@@ -378,7 +452,7 @@ onBeforeUnmount(() => {
 
 .gjs-toolbar-item {
   background-color: #374151 !important;
-  padding: 6px 8px !important;
+  padding: 5px 6px !important;
   margin: 1px !important;
 }
 
@@ -387,7 +461,7 @@ onBeforeUnmount(() => {
   color: white !important;
   opacity: 1 !important;
   visibility: visible !important;
-  padding-right: 4px !important;
+  padding-right: 0 !important;
 }
 
 .gjs-toolbar-item svg,
@@ -395,9 +469,9 @@ onBeforeUnmount(() => {
   fill: white !important;
   color: white !important;
   opacity: 1 !important;
-  font-size: 16px !important;
-  width: 16px !important;
-  height: 16px !important;
+  font-size: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
 }
 
 /* Right sidebar (Style Manager) */

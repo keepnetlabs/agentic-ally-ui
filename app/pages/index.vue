@@ -3,8 +3,11 @@ const input = ref('')
 const loading = ref(false)
 const colorMode = useColorMode()
 
-const { model } = useLLM()
 const { buildUrl, accessToken, companyId, baseApiUrl } = useRouteParams()
+
+interface CreateChatResponse {
+  id: string
+}
 
 // Image based on color mode
 const imageUrl = computed(() => {
@@ -16,9 +19,8 @@ const imageUrl = computed(() => {
 async function createChat(prompt: string) {
   loading.value = true
   try {
-    console.log('Creating chat with prompt:', prompt)
     const url = buildUrl('/api/chats')
-    const chat = await $fetch(url, {
+    const chat = await $fetch<CreateChatResponse>(url, {
       method: 'POST',
       body: { prompt },
       credentials: 'include',
@@ -28,12 +30,7 @@ async function createChat(prompt: string) {
         ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
       }
     })
-    console.log('Chat created:', chat)
-    console.log('Chat ID:', chat?.id)
-    console.log('Full chat object:', JSON.stringify(chat))
-
     if (!chat?.id) {
-      console.error('Chat ID missing!', chat)
       return
     }
 
@@ -41,14 +38,13 @@ async function createChat(prompt: string) {
 
     const chatUrl = buildUrl(`/chat/${chat.id}`)
     navigateTo(chatUrl)
-  } catch(e) {
-    console.error('Error creating chat:', e)
+  } catch {
   } finally {
     loading.value = false
   }
 }
 
-function onSubmit() {
+function handleSubmit() {
   if (!input.value.trim() || loading.value) return
   const prompt = input.value.trim()
   input.value = ''
@@ -57,25 +53,29 @@ function onSubmit() {
 
 const quickChats = [
   {
-    label: 'Create Phishing Awareness',
-    icon: 'i-lucide-shield-alert'
+    label: 'Generate Microlearning',
+    prompt: 'Generate microlearning',
+    icon: 'i-lucide-graduation-cap'
   },
   {
-    label: 'Create Quishing Awareness',
-    icon: 'i-lucide-qr-code'
+    label: 'Analyze User Behavior',
+    prompt: 'Analyze user behavior',
+    icon: 'i-lucide-search'
   },
   {
-    label: 'Secure Remote Work Basics',
-    icon: 'i-lucide-laptop'
-  },
-  {
-    label: 'MFA',
-    icon: 'i-lucide-shield-check'
-  },
-  {
-    label: 'Create Strong Passwords',
-    icon: 'i-lucide-key-round'
+    label: 'Design Phishing Scenario',
+    prompt: 'Design a phishing scenario',
+    icon: 'phishing'
   }
+]
+
+const examplePrompts = [
+  'QR phishing training for frontline staff',
+  'SQL injection training for backend developers',
+  'Secure coding microlearning for API teams',
+  'Phishing scenario for fake login pages targeting finance users',
+  'Supply-chain security training for procurement and operations teams',
+  'Compliance training aligned with ISO, GDPR, and HIPAA requirements'
 ]
 </script>
 
@@ -87,7 +87,7 @@ const quickChats = [
 
     <template #body>
       <UContainer class="flex-1 flex flex-col justify-center gap-4 sm:gap-6 py-8">
-        <img :src="imageUrl" style="max-width: 128px;max-height: 128px; margin: 0 auto;" />
+        <img :src="imageUrl" class="mx-auto max-w-32 max-h-32" />
         <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">
           How can I help you today?
         </h1>
@@ -101,7 +101,7 @@ const quickChats = [
           data-1p-ignore
           data-lpignore="true"
           data-form-type="other"
-          @submit="onSubmit"
+          @submit="handleSubmit"
         >
           <UChatPromptSubmit 
             color="info" 
@@ -113,19 +113,48 @@ const quickChats = [
 
         </UChatPrompt>
 
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 w-full justify-center">
           <UButton
             v-for="quickChat in quickChats"
             :key="quickChat.label"
-            :icon="quickChat.icon"
-            :label="quickChat.label"
             :disabled="loading"
             size="sm"
-            color="neutral"
+            color="primary"
             variant="outline"
-            class="rounded-full"
-            @click="createChat(quickChat.label)"
-          />
+            :class="[
+              'justify-center rounded-full !text-[#383B41] hover:!text-[#383B41] dark:!text-white !border-[#B3D4FC] hover:!border-[#B3D4FC]',
+              // <=1024px: just wrap with gap-2, take only as much as content
+              'w-auto flex-none max-w-full',
+              // >=1024px: 3 equal columns; if it wraps, it won't stretch full-width
+              'lg:flex-none lg:basis-[calc((100%-1rem)/3)] lg:max-w-[calc((100%-1rem)/3)] lg:min-w-[220px]'
+            ]"
+            @click="createChat(quickChat.prompt)"
+          >
+            <span class="flex items-center gap-2">
+              <PhishingIcon v-if="quickChat.icon === 'phishing'" class="h-4 w-4 text-[#2196F3]" />
+              <UIcon v-else :name="quickChat.icon" class="h-4 w-4 text-[#2196F3]" />
+              <span>{{ quickChat.label }}</span>
+            </span>
+          </UButton>
+        </div>
+
+        <div class="pt-4">
+          <p class="text-[12px] font-semibold text-muted-foreground">
+            Here are a few examples <span class="font-semibold">(click to try)</span>:
+          </p>
+          <div class="mt-2 space-y-1">
+            <button
+              v-for="(example, idx) in examplePrompts"
+              :key="example"
+              type="button"
+              class="block text-left text-[10px] hover:underline disabled:opacity-50 disabled:no-underline"
+              :class="idx === 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'"
+              :disabled="loading"
+              @click="createChat(example)"
+            >
+              {{ example }}
+            </button>
+          </div>
         </div>
       </UContainer>
     </template>

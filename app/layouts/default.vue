@@ -23,15 +23,6 @@ const open = ref(false)
 const homeUrl = computed(() => buildUrl('/'))
 const filesUrl = computed(() => buildUrl('/files'))
 
-// Button attributes based on collapsed state
-const newChatAttrs = computed(() =>
-  isCanvasVisible.value ? { icon: 'i-lucide-plus' } : { label: 'New chat' }
-)
-
-const filesAttrs = computed(() =>
-  isCanvasVisible.value ? { icon: 'i-lucide-folder' } : { icon: 'i-lucide-folder', label: 'Files' }
-)
-
 const deleteModal = overlay.create(LazyModalConfirm, {
   props: {
     title: 'Delete chat',
@@ -161,35 +152,50 @@ defineShortcuts({
         </div>
         
         <div v-if="collapsed" class="flex items-center justify-center w-full">
-          <UDashboardSidebarCollapse />
+          <UTooltip text="Expand sidebar">
+            <UDashboardSidebarCollapse />
+          </UTooltip>
         </div>
       </template>
 
       <template #default="{ collapsed }">
         <div class="flex flex-col gap-1.5">
-          <UButton
-            v-bind="newChatAttrs"
-            block
-            :to="homeUrl"
-            variant="outline"
-            :ui="{
-              base: 'rounded border border-[#B3D4FC] bg-[#F1F8FE] text-[#2196F3] hover:bg-[#E3F0FD] dark:border-white dark:bg-black dark:text-white dark:hover:bg-gray-900 font-semibold text-sm leading-5',
-              font: 'font-sans'
-            }"
-            @click="open = false"
-          />
+          <UTooltip text="New chat" :disabled="!collapsed">
+            <UButton
+              block
+              :to="homeUrl"
+              variant="outline"
+              :icon="collapsed ? 'i-lucide-plus' : undefined"
+              :label="collapsed ? undefined : 'New chat'"
+              :aria-label="collapsed ? 'New chat' : undefined"
+              :ui="{
+                base: [
+                  'rounded border border-[#B3D4FC] bg-[#F1F8FE] text-[#2196F3] hover:bg-[#E3F0FD] dark:border-white dark:bg-black dark:text-white dark:hover:bg-gray-900 font-semibold text-sm leading-5',
+                  collapsed ? 'justify-center px-0' : ''
+                ].join(' '),
+                font: 'font-sans'
+              }"
+              @click="open = false"
+            />
+          </UTooltip>
 
-          <UButton
-            v-bind="filesAttrs"
-            block
-            :to="filesUrl"
-            variant="ghost"
-            color="neutral"
-            @click="open = false"
-          />
+          <UTooltip text="Files" :disabled="!collapsed">
+            <UButton
+              block
+              :to="filesUrl"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-folder"
+              :label="collapsed ? undefined : 'Files'"
+              :aria-label="collapsed ? 'Files' : undefined"
+              @click="open = false"
+            />
+          </UTooltip>
 
           <template v-if="collapsed">
-            <UDashboardSearchButton collapsed />
+            <UTooltip text="Search">
+              <UDashboardSearchButton collapsed />
+            </UTooltip>
           </template>
         </div>
 
