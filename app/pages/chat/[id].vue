@@ -9,6 +9,8 @@ import { useCanvas } from '../../composables/useCanvas'
 import { useCanvasTriggers } from '../../composables/useCanvasTriggers'
 import { useChatClient } from '../../composables/useChatClient'
 import { useRouteParams } from '../../composables/useRouteParams'
+import { useAuthToken } from '../../composables/useAuthToken'
+import { useSecureApi } from '../../composables/useSecureApi'
 import { parseError } from '../../utils/error-handler'
 import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
@@ -30,7 +32,9 @@ const clipboard = useClipboard()
 const { model } = useLLM()
 const { isCanvasVisible, toggleCanvas, hideCanvas, clearCanvasContent } = useCanvas()
 const { getModelConfig, createHandleSubmit, createStop, createReload, createMessages, createStatus, createErrorComputed } = useChatClient()
-const { buildUrl, accessToken, companyId, baseApiUrl } = useRouteParams()
+const { buildUrl, companyId, baseApiUrl } = useRouteParams()
+const { token: accessToken, clearToken } = useAuthToken()
+const { secureFetch } = useSecureApi()
 
 const chatId = String(route.params.id)
 
@@ -58,7 +62,7 @@ const saveMessageWithRetry = async (
   try {
     const messagesUrl = buildUrl(`/api/chats/${chatId}/messages`)
 
-    await $fetch(messagesUrl, {
+    await secureFetch(messagesUrl, {
       method: 'POST',
       body: {
         id: messageId,
@@ -154,7 +158,7 @@ const chatClient = new Chat({
     api: streamUrl,
     body: { ...getModelConfig(model.value), conversationId: chatId },
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-      return fetch(input, {
+      const response = await fetch(input, {
         ...init,
         headers: {
           ...(init?.headers || {}),
@@ -163,6 +167,14 @@ const chatClient = new Chat({
           ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
         }
       })
+
+      // Handle 401 Unauthorized - token expired or invalid
+      if (response.status === 401) {
+        clearToken()
+        throw new Error('Session expired. Please authenticate again.')
+      }
+
+      return response
     }
   }),
   messages: (chat.value?.messages ?? []).map((m: any) => ({

@@ -9,13 +9,14 @@ export const useRouteParams = () => {
   const accessToken = computed(() => route.query.accessToken as string)
   const baseApiUrl = computed(() => route.query.baseApiUrl as string)
   const companyId = computed(() => route.query.companyId as string)
+  const code = computed(() => route.query.code as string)
 
-  // Extract all relevant query params
+  // Extract all relevant query params (accessToken NOT included, use localStorage instead)
   const queryParams = computed(() => {
     const params = new URLSearchParams()
 
     if (sessionId.value) params.append('sessionId', sessionId.value)
-    if (accessToken.value) params.append('accessToken', accessToken.value)
+    // accessToken not included here - use localStorage via useAuthToken instead
     if (baseApiUrl.value) params.append('baseApiUrl', baseApiUrl.value)
     if (companyId.value) params.append('companyId', companyId.value)
 
@@ -33,6 +34,7 @@ export const useRouteParams = () => {
     accessToken,
     baseApiUrl,
     companyId,
+    code,
     queryParams,
     buildUrl
   }

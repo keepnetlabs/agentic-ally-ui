@@ -3,7 +3,9 @@ const input = ref('')
 const loading = ref(false)
 const colorMode = useColorMode()
 
-const { buildUrl, accessToken, companyId, baseApiUrl } = useRouteParams()
+const { buildUrl, companyId, baseApiUrl } = useRouteParams()
+const { token: accessToken } = useAuthToken()
+const { secureFetch } = useSecureApi()
 
 interface CreateChatResponse {
   id: string
@@ -20,7 +22,7 @@ async function createChat(prompt: string) {
   loading.value = true
   try {
     const url = buildUrl('/api/chats')
-    const chat = await $fetch<CreateChatResponse>(url, {
+    const chat = await secureFetch<CreateChatResponse>(url, {
       method: 'POST',
       body: { prompt },
       credentials: 'include',

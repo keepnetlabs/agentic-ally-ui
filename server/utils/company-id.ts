@@ -13,7 +13,8 @@ export const extractCompanyId = (event: any): string | null => {
     }
 
     // Fallback to JWT token decode
-    const accessToken = getHeader(event, 'x-agentic-ally-token')
+    const config = useRuntimeConfig()
+    const accessToken = getHeader(event, 'x-agentic-ally-token') || config.viteDefaultToken
     if (accessToken) {
         try {
             // JWT format: header.payload.signature

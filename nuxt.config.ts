@@ -12,6 +12,7 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
+    viteDefaultToken: process.env.VITE_DEFAULT_TOKEN || '',
     session: {
       name: 'nuxt-session',
       password: process.env.NUXT_SESSION_PASSWORD || 'change-this-to-a-secure-password-with-at-least-32-characters-minimum',

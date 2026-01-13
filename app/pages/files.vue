@@ -11,18 +11,16 @@ const toast = useToast()
 // @ts-ignore - Nuxt auto-imports useOverlay
 const overlay = useOverlay()
 
-// Get query params from composable
-const { accessToken, companyId, baseApiUrl } = useRouteParams()
-
-// Fallback token for local development
-const defaultToken = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkMwMjRCMzYyRUY5QzgzNzQxNjYzMzJGMDE1MjMzQUNDIiwidHlwIjoiYXQrand0In0.eyJuYmYiOjE3Njc5NDE0MzQsImV4cCI6MTc2ODAyNzgzNCwiaXNzIjoiaHR0cDovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiY2xpZW50X2lkIjoidWlfY2xpZW50Iiwic3ViIjoicHRhQ2RSS2paRTJhIiwiYXV0aF90aW1lIjoxNzY3OTQxNDM0LCJpZHAiOiJodHRwczovL3Rlc3QtYXBpLmRldmtlZXBuZXQuY29tIiwiZW1haWwiOiJndXJrYW4udWd1cmx1QGtlZXBuZXRsYWJzLmNvbSIsImZhbWlseV9uYW1lIjoiVWd1cmx1IiwiZ2l2ZW5fbmFtZSI6Ikd1cmthbiIsIm5hbWUiOiJHdXJrYW4gVWd1cmx1IiwicGhvbmVfbnVtYmVyIjoiIiwicGhvbmVfbnVtYmVyX3ZlcmlmaWVkIjoiZmFsc2UiLCJ1c2VyX2lkIjoiMzIiLCJ1c2VyX2NvbXBhbnlfaWQiOiIxIiwidXNlcl9jb21wYW55X3Jlc291cmNlaWQiOiJ1QjRqY0Z6OXgxTXkiLCJ1c2VyX2NvbXBhbnlfbmFtZSI6IlN5c3RlbSIsInVzZXJfY29tcGFueV9sb2dvcGF0aCI6Imh0dHBzOi8vdGVzdC1hcGkuZGV2a2VlcG5ldC5jb20vY29tcGFueWxvZ28vZmI5Y2RmODAtYmExZi00MWI4LTkxYzktYjE1YmU4YjBmMDEwLnBuZyIsInVzZXJfY29tcGFueV9pbmR1c3RyeV9yZXNvdXJjZWlkIjoiWlpZR2VOVkI2MHlNIiwidXNlcl9jb21wYW55X2luZHVzdHJ5X25hbWUiOiJUZWNobm9sb2d5IiwidXNlcl9jb21wYW55X3BhcmVudGNvbXBhbnlfcmVzb3VyY2VpZCI6IiIsInVzZXJfY29tcGFueV9wYXJlbnRjb21wYW55X25hbWUiOiIiLCJ1c2VyX2NvbXBhbnlfcGFyZW50Y29tcGFueV9pZCI6IjAiLCJzdGF0dXMiOiIxIiwicm9sZSI6IlJvb3QiLCJyb290X2FjY2VzcyI6IlRydWUiLCJyZXNlbGxlcl9hY2Nlc3MiOiJUcnVlIiwiY29tcGFueV9hZG1pbl9hY2Nlc3MiOiJUcnVlIiwianRpIjoiRjc3MkEwM0E3NUFDQkM2NTVGMjBGQzBEMEVBNUY0M0MiLCJpYXQiOjE3Njc5NDE0MzQsInNjb3BlIjpbImFwaTEiXSwiYW1yIjpbInBhc3N3b3JkIl19.ZEBnhUcYvN4lVHJr-fBgLqf5Rdqmi_EqbsFp8cfZEwq0xezARNItbyFv3dABkM2djUhtQDavrkUXZK4eOu-_OVrjOvEN55IIefsOUPKZIuvehHqARQXyxOU39dy5UnUyAwfMDSDp3Lz4gAE5idnsligbS8Xhf5Qjt1MYySY5CIrSHEIJPyaYKvNjr4deNkPWPtKVPEV606daQ5R9SLUnIB8mSD2GPDiHoq6mPxJkPqq-sRUALmXUjg2nJovazeqQ7uUCuG27uSXDy0pM4NolHEB2blFLKjiEgFT96OQ2ad8QuAlqg6kklVNvtu-RtCiaMdwKuB_rJBAPmBPmOgolEA'
+// Get query params and token
+const { companyId, baseApiUrl } = useRouteParams()
+const { token } = useAuthToken()
+const { secureFetch } = useSecureApi()
 
 // Build headers for requests
 const buildHeaders = () => {
   const headers: Record<string, string> = {}
-  const token = accessToken.value || defaultToken
-  if (token) {
-    headers['X-AGENTIC-ALLY-TOKEN'] = token
+  if (token.value) {
+    headers['X-AGENTIC-ALLY-TOKEN'] = token.value
   }
   if (companyId.value) {
     headers['X-COMPANY-ID'] = companyId.value
@@ -120,7 +118,7 @@ const handleUpload = async () => {
     const formData = new FormData()
     formData.append('file', selectedFile.value)
 
-    await $fetch('/api/files', {
+    await secureFetch('/api/files', {
       method: 'POST',
       body: formData,
       credentials: 'include',
@@ -213,7 +211,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
   }
 
   try {
-    await $fetch(`/api/files/${policyId}`, {
+    await secureFetch(`/api/files/${policyId}`, {
       method: 'DELETE',
       credentials: 'include',
       headers: buildHeaders()

@@ -225,6 +225,8 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useRouteParams } from '../composables/useRouteParams'
+
+import { useSecureApi } from '../composables/useSecureApi'
 import type { LandingPage, ServerMessage } from '../types/chat'
 
 interface CanvasContent {
@@ -253,7 +255,9 @@ const emit = defineEmits<{
 
 const content = ref<CanvasContent | null>(null)
 const { copy } = useClipboard()
-const { accessToken, baseApiUrl } = useRouteParams()
+const { baseApiUrl,accessToken } = useRouteParams()
+
+const { secureFetch } = useSecureApi()
 
 // Build iframe URL with accessToken and baseApiUrl from route query
 const iframeUrl = computed(() => {
@@ -416,7 +420,7 @@ const handleEditorSave = async (newHtml: string) => {
   if (messageId && chatId) {
     try {
       // First, fetch the current message to preserve other content
-      const currentMessage = await $fetch<ServerMessage>(`/api/chats/${chatId}/messages/${messageId}`)
+      const currentMessage = await secureFetch<ServerMessage>(`/api/chats/${chatId}/messages/${messageId}`)
       let fullContent = currentMessage?.content || ''
 
       // For emails, replace only the email wrapper
@@ -443,7 +447,7 @@ const handleEditorSave = async (newHtml: string) => {
         }
       }
 
-      await $fetch(`/api/chats/${chatId}/messages/${messageId}`, {
+      await secureFetch(`/api/chats/${chatId}/messages/${messageId}`, {
         method: 'PUT',
         body: {
           content: fullContent

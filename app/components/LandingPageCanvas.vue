@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { LandingPage } from '../types/chat'
+import { useSecureApi } from '../composables/useSecureApi'
+import type { LandingPage, ServerMessage } from '../types/chat'
 
 const props = defineProps<{
   landingPage: LandingPage
@@ -12,6 +13,8 @@ const emit = defineEmits<{
   close: []
   refresh: [messageId: string, newContent: string]
 }>()
+
+const { secureFetch } = useSecureApi()
 
 const selectedPageIndex = ref(0)
 const viewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
@@ -42,7 +45,7 @@ const handleEditorSave = async (newHtml: string) => {
   if (props.messageId && props.chatId) {
     try {
       // First, fetch the current message to preserve other content
-      const currentMessage = await $fetch(`/api/chats/${props.chatId}/messages/${props.messageId}`)
+      const currentMessage = await secureFetch<ServerMessage>(`/api/chats/${props.chatId}/messages/${props.messageId}`)
       let fullContent = currentMessage?.content || ''
 
       // Encode the entire landing page object as base64
@@ -61,7 +64,7 @@ const handleEditorSave = async (newHtml: string) => {
         fullContent += '\n' + newLandingPageWrapper
       }
 
-      await $fetch(`/api/chats/${props.chatId}/messages/${props.messageId}`, {
+      await secureFetch(`/api/chats/${props.chatId}/messages/${props.messageId}`, {
         method: 'PUT',
         body: {
           content: fullContent

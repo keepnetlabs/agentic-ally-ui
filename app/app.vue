@@ -5,6 +5,8 @@ import { LazyModalConfirm } from '#components'
 const colorMode = useColorMode()
 const router = useRouter()
 const { isStreaming, stopStreaming } = useChatNavigation()
+const { code, baseApiUrl, accessToken: queryAccessToken } = useRouteParams()
+const { setToken } = useAuthToken()
 
 // Global streaming check on route navigation
 router.beforeEach(async (to, from) => {
@@ -93,22 +95,56 @@ const sendColorModeToParent = () => {
 
 onMounted(async () => {
   siteUrl.value = window.location.origin
-  
+
   // İlk cookie set et
   $fetch('/api/ping').catch(() => {})
-  
+
+  // Handle direct accessToken from query (Migration/Fallback logic)
+  if (queryAccessToken.value) {
+    try {
+      setToken(queryAccessToken.value)
+    } catch (e) {
+      console.warn('Failed to set token from query', e)
+    }
+  }
+
+  // Handle auth code exchange if present
+  if (code.value && baseApiUrl.value) {
+    try {
+      const response = await $fetch('/api/auth/token', {
+        method: 'POST',
+        body: {
+          code: code.value,
+          baseApiUrl: baseApiUrl.value
+        }
+      })
+
+      if (response && response.accessToken) {
+        // Save token to localStorage using composable
+        try {
+          setToken(response.accessToken)
+        } catch (storageError) {
+          // localStorage failed - likely cross-origin iframe without storage access
+          console.warn('localStorage not available in this context', storageError)
+        }
+      }
+    } catch (error: any) {
+      console.error('Token exchange failed:', error)
+    }
+  }
+
   // Color mode'u parent'a gönder (iframe içindeyse)
   sendColorModeToParent()
-  
+
   // System preference değiştiğinde de bildir
   if (window.matchMedia) {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     mediaQuery.addEventListener('change', sendColorModeToParent)
   }
-  
+
   // Sadece Safari'de çalışsın
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-  
+
   if (isSafari && window.parent !== window && 'requestStorageAccess' in document) {
     try {
       const hasAccess = await document.hasStorageAccess()
