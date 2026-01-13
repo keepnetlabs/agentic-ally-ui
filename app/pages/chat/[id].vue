@@ -227,7 +227,25 @@ watch(
 
 const copied = ref(false)
 const canvasRef = ref()
-const { openCanvasWithUrl, openCanvasWithEmail, openCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, hideCanvas, messages, route, chat, status)
+const openCanvasType = ref<'email' | 'landing-page' | null>(null)
+
+const wrappedHideCanvas = () => {
+  openCanvasType.value = null
+  hideCanvas()
+}
+
+const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
+
+// Wrap canvas open functions to track canvas type
+const openCanvasWithEmail = (email: any, messageId: string) => {
+  openCanvasType.value = 'email'
+  originalOpenCanvasWithEmail(email, messageId)
+}
+
+const openCanvasWithLandingPage = (landingPage: any, messageId: string) => {
+  openCanvasType.value = 'landing-page'
+  originalOpenCanvasWithLandingPage(landingPage, messageId)
+}
 
 // Compute assistant config with conditional actions based on streaming state
 const assistantConfig = computed(() => {
@@ -340,9 +358,9 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                 <LandingPageCard
                   v-if="extractLandingPageFromMessage(message)"
                   :landing-page="extractLandingPageFromMessage(message)"
-                  :is-canvas-visible="isCanvasVisible"
+                  :is-canvas-visible="openCanvasType === 'landing-page'"
                   @open="(landingPage) => openCanvasWithLandingPage(landingPage, message.id)"
-                  @toggle="(landingPage) => isCanvasVisible ? hideCanvas() : openCanvasWithLandingPage(landingPage, message.id)"
+                  @toggle="(landingPage) => openCanvasType === 'landing-page' ? wrappedHideCanvas() : openCanvasWithLandingPage(landingPage, message.id)"
                 />
 
                 <!-- Training URL UI -->
@@ -351,7 +369,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :url="extractTrainingUrlFromMessage(message) || ''"
                   :is-canvas-visible="isCanvasVisible"
                   @open="openCanvasWithUrl"
-                  @toggle="(url) => isCanvasVisible ? hideCanvas() : openCanvasWithUrl(url)"
+                  @toggle="(url) => isCanvasVisible ? wrappedHideCanvas() : openCanvasWithUrl(url)"
                   @copy="() => copyTrainingUrl(message)"
                 />
 
@@ -362,10 +380,10 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :email="email"
                   :index="index"
                   :total-count="extractAllPhishingEmailsFromMessage(message).length"
-                  :is-canvas-visible="isCanvasVisible"
+                  :is-canvas-visible="openCanvasType === 'email'"
                   :is-quishing="email.isQuishing"
                   @open="(email) => openCanvasWithEmail(email, message.id)"
-                  @toggle="(email) => isCanvasVisible ? hideCanvas() : openCanvasWithEmail(email, message.id)"
+                  @toggle="(email) => openCanvasType === 'email' ? wrappedHideCanvas() : openCanvasWithEmail(email, message.id)"
                 />
 
                 <!-- Reasoning (shown above content, also during streaming) -->

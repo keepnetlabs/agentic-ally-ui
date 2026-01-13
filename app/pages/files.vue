@@ -247,8 +247,11 @@ const handleDelete = async (policyId: string, policyName: string) => {
         <div class="space-y-6">
           <div>
             <h1 class="text-2xl font-bold text-highlighted">Files</h1>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">
-              Manage your company documents
+            <p class="text-gray-900 dark:text-gray-100 mt-1 font-medium">
+              Documents uploaded here guide Agentic AI decisions.
+            </p>
+            <p class="text-gray-500 dark:text-gray-400 mt-2 text-sm">
+              Policies, procedures, and guidelines are used by Agentic AI when generating training, simulations, and reports.
             </p>
           </div>
 
@@ -352,6 +355,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
                   variant="ghost"
                   size="xs"
                   icon="i-lucide-trash-2"
+                  class="flex-shrink-0 ml-2"
                   @click="handleDelete(policy.id, policy.name)"
                 >
                   Delete

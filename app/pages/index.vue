@@ -144,11 +144,10 @@ const examplePrompts = [
           </p>
           <div class="mt-2 space-y-1">
             <button
-              v-for="(example, idx) in examplePrompts"
+              v-for="(example) in examplePrompts"
               :key="example"
               type="button"
-              class="block text-left text-[10px] hover:underline disabled:opacity-50 disabled:no-underline"
-              :class="idx === 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'"
+              class="block text-left text-[10px] hover:underline hover:text-primary disabled:opacity-50 disabled:no-underline transition-colors"
               :disabled="loading"
               @click="createChat(example)"
             >

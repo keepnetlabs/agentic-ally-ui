@@ -5,16 +5,8 @@
   >
     <template #right>
       <slot name="right" />
-      
-      <UColorModeButton v-if="!isCanvasVisible" />
 
-      <UButton
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-plus"
-        to="/"
-        class="lg:hidden"
-      />
+      <UColorModeButton v-if="!isCanvasVisible" />
     </template>
   </UDashboardNavbar>
 </template>
