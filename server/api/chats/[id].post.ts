@@ -10,11 +10,17 @@ defineRouteMeta({
   }
 })
 
-// Helper: remove training metadata from content
 const cleanMetadata = (obj: any) => {
   const metadataPattern = /::ui:training_meta::[\s\S]*?:\/ui:training_meta::/g
-  if (obj.text) obj.text = obj.text.replace(metadataPattern, '')
-  if (obj.delta) obj.delta = obj.delta.replace(metadataPattern, '')
+  // Hide specific UI signals (handles both single tags and wrapped content)
+  const signalsPattern = /::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g
+
+  if (obj.text) {
+    obj.text = obj.text.replace(metadataPattern, '').replace(signalsPattern, '')
+  }
+  if (obj.delta) {
+    obj.delta = obj.delta.replace(metadataPattern, '').replace(signalsPattern, '')
+  }
   return obj
 }
 
@@ -241,8 +247,14 @@ export default defineEventHandler(async (event) => {
       .pipeThrough(new TextEncoderStream())
 
     return sendStream(event, encoded)
-  } catch (error) {
+  } catch (error: any) {
     console.error('Fleet Agent fetch error:', error)
+
+    // Propagate existing H3 errors (including the one we threw above for !response.ok)
+    if (error.statusCode) {
+      throw error
+    }
+
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to connect to Fleet Agent'

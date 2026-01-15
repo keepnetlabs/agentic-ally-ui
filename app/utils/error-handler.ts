@@ -33,10 +33,13 @@ interface ErrorObject {
 
 const getErrorObject = (error: unknown): ErrorObject => {
   if (error instanceof Error) {
+    const err = error as any
     return {
-      message: error.message,
-      code: (error as any).code,
-      name: error.name
+      message: err.data?.message || err.statusMessage || error.message,
+      code: err.code,
+      name: error.name,
+      statusCode: err.statusCode,
+      status: err.status || err.response?.status
     }
   }
   return (error as ErrorObject) || {}
@@ -88,19 +91,19 @@ const getErrorContext = (error: unknown): ErrorContext => {
   }
 
   if (status === 401) {
-    return { type: 'unauthorized', status }
+    return { type: 'unauthorized', status, originalMessage: errorObj.message }
   }
 
   if (status === 403) {
-    return { type: 'forbidden', status }
+    return { type: 'forbidden', status, originalMessage: errorObj.message }
   }
 
   if (status === 404) {
-    return { type: 'not_found', status }
+    return { type: 'not_found', status, originalMessage: errorObj.message }
   }
 
   if (status === 429) {
-    return { type: 'rate_limit', status }
+    return { type: 'rate_limit', status, originalMessage: errorObj.message }
   }
 
   if (status && status >= 500) {
@@ -148,8 +151,8 @@ const errorMessages: Record<ErrorType, Omit<ErrorDisplay, 'canRetry'> & { canRet
     canRetry: false  // User explicitly cancelled, no retry prompt
   },
   unauthorized: {
-    title: 'Authentication required',
-    message: 'Please sign in to continue.',
+    title: 'Unauthorized',
+    message: 'You are not authorized to perform this action.',
     icon: 'i-lucide-lock',
     canRetry: false  // User must auth first, retrying won't help
   },
@@ -195,6 +198,16 @@ export const parseError = (error: unknown): ErrorDisplay => {
   const context = getErrorContext(error)
   const display = errorMessages[context.type]
 
+  // If we have a specific message from backend, use it
+  let finalMessage = display.message
+  if (context.originalMessage && !isNetworkError(error) && !isTimeoutError(error)) {
+    // Don't use generic technical messages like "[object Object]" or "Fetch error"
+    const msg = String(context.originalMessage)
+    if (msg && !msg.includes('FetchError') && !msg.includes('[object Object]')) {
+      finalMessage = msg
+    }
+  }
+
   // Log for debugging
   if (process.env.NODE_ENV === 'development') {
     console.error('[Error Context]', context)
@@ -202,6 +215,7 @@ export const parseError = (error: unknown): ErrorDisplay => {
 
   return {
     ...display,
+    message: finalMessage,
     canRetry: display.canRetry
   }
 }

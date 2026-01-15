@@ -24,10 +24,10 @@ export const extractCompanyId = (event: any): string | null => {
                 const payload = JSON.parse(
                     Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()
                 )
-                // Extract user_company_id from token
-                if (payload.user_company_id) {
+                // Extract user_company_resourceid from token
+                if (payload.user_company_resourceid) {
                     // Clean: remove trailing slashes and whitespace
-                    return String(payload.user_company_id).trim().replace(/\/+$/, '')
+                    return String(payload.user_company_resourceid).trim().replace(/\/+$/, '')
                 }
             }
         } catch (error) {

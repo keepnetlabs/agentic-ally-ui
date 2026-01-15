@@ -131,6 +131,7 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
         .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
+        .replace(/::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
 }
 
 // Get all stream text from message parts

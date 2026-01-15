@@ -66,6 +66,21 @@ export default defineEventHandler(async (event) => {
   const filename = decodedPath.replace(/^policies\//, '')
   const fullBlobUrl = `policies/${companyId}/${filename}`
 
+  // Common headers
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json; charset=utf-8'
+  }
+
+  // Handling missing policy gracefully (Soft 404)
+  const returnNotFound = (msg: string) => {
+    return new Response(JSON.stringify({
+      text: msg,
+      policyId: null,
+      policyName: null,
+      blobUrl: null
+    }), { headers })
+  }
+
   const db = useDrizzle()
   const policy = await db.query.policies.findFirst({
     where: (policy, { eq, and }) => and(
@@ -75,10 +90,7 @@ export default defineEventHandler(async (event) => {
   })
 
   if (!policy) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found or access denied'
-    })
+    return returnNotFound('Policy information not found.')
   }
 
   const r2 = event?.context?.cloudflare?.env?.agentic_ally_policies
@@ -91,13 +103,16 @@ export default defineEventHandler(async (event) => {
   }
 
   // Read PDF from R2 and extract text
-  const object = await r2.get(policy.blobUrl)
+  // Safely handle R2 get errors
+  let object
+  try {
+    object = await r2.get(policy.blobUrl)
+  } catch (e) {
+    console.error('R2 Get Error:', e)
+  }
 
   if (!object) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found'
-    })
+    return returnNotFound('Policy file content not found.')
   }
 
   let pdfText = 'PDF text extraction not implemented yet'
@@ -117,20 +132,6 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     pdfText = `Error reading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
   }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json; charset=utf-8'
-  }
-
-  const origin = getRequestHeader(event, 'origin')
-  if (origin) {
-    headers['Access-Control-Allow-Origin'] = origin
-  } else {
-    headers['Access-Control-Allow-Origin'] = '*'
-  }
-  headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-  headers['Access-Control-Allow-Headers'] = 'Content-Type, x-company-id, x-agentic-ally-token, x-base-api-url'
-  headers['Access-Control-Allow-Credentials'] = 'true'
 
   return new Response(JSON.stringify({
     text: pdfText,
