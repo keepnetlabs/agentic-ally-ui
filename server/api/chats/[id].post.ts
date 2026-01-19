@@ -38,11 +38,13 @@ export default defineEventHandler(async (event) => {
 
   let sessionUserId: string | undefined
 
-  try {
-    const session = await getUserSession(event)
-    sessionUserId = (session as any).user?.id
-  } catch {
-    // Session devre dışı, query'den devam
+  if (!querySessionId) {
+    try {
+      const session = await getUserSession(event)
+      sessionUserId = (session as any).user?.id
+    } catch {
+      // Session devre dışı, query'den devam
+    }
   }
 
   // Fallback user ID if session is empty (for iframe access)
@@ -52,9 +54,6 @@ export default defineEventHandler(async (event) => {
   const chat = await db.query.chats.findFirst({
     where: (chat, { eq }) => {
       return and(eq(chat.id, id as string), eq(chat.userId, userId))
-    },
-    with: {
-      messages: true
     }
   })
 
@@ -80,7 +79,10 @@ export default defineEventHandler(async (event) => {
   if (companyId) {
     try {
       const policies = await db.query.policies.findMany({
-        where: (policy, { eq }) => eq(policy.companyId, companyId)
+        where: (policy, { eq }) => eq(policy.companyId, companyId),
+        columns: {
+          blobUrl: true
+        }
       })
       // Build full URLs for R2 file access
       // If blobUrl is a pathname, prepend the base URL

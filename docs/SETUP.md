@@ -38,12 +38,14 @@ Create `.env` file in project root:
 NUXT_SESSION_PASSWORD=your-32-character-password-here
 FLEET_AGENT_URL=http://localhost:4111/chat
 NUXT_UI_PRO_LICENSE=your-license-key
+VITE_DEFAULT_TOKEN=your_jwt_token_here
 ```
 
 **Note:**
 - `NUXT_SESSION_PASSWORD`: Used for encrypting session cookies (min 32 chars)
 - `FLEET_AGENT_URL`: Local Fleet Agent Worker endpoint
 - `NUXT_UI_PRO_LICENSE`: Required for Nuxt UI Pro components
+- `VITE_DEFAULT_TOKEN`: Default access token for local development (fallback)
 
 ### 5. Start Development Server
 

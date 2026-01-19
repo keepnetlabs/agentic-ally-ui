@@ -13,11 +13,13 @@ export default defineEventHandler(async (event) => {
 
   let sessionUserId: string | undefined
 
-  try {
-    const session = await getUserSession(event)
-    sessionUserId = (session as any).user?.id
-  } catch {
-    // Session devre dışı, query'den devam
+  if (!querySessionId) {
+    try {
+      const session = await getUserSession(event)
+      sessionUserId = (session as any).user?.id
+    } catch {
+      // Session devre dışı, query'den devam
+    }
   }
 
   // Fallback user ID if session is empty (for iframe access)
@@ -29,26 +31,28 @@ export default defineEventHandler(async (event) => {
   const { content } = body
   const db = useDrizzle()
 
-  // Verify chat exists and belongs to user
-  const chat = await db.query.chats.findFirst({
-    where: (chat, { eq }) => {
-      return and(eq(chat.id, chatId as string), eq(chat.userId, userId))
-    }
-  })
+  const result = await db
+    .select({
+      chatId: tables.chats.id,
+      message: tables.messages
+    })
+    .from(tables.chats)
+    .leftJoin(
+      tables.messages,
+      and(
+        eq(tables.messages.id, messageId as string),
+        eq(tables.messages.chatId, tables.chats.id)
+      )
+    )
+    .where(and(eq(tables.chats.id, chatId as string), eq(tables.chats.userId, userId)))
+    .get()
 
-  if (!chat) {
+  if (!result) {
     console.log('Chat not found or unauthorized:', chatId)
     throw createError({ statusCode: 404, statusMessage: 'Chat not found' })
   }
 
-  // Verify message exists and belongs to this chat
-  const message = await db.query.messages.findFirst({
-    where: (message, { eq }) => {
-      return and(eq(message.id, messageId as string), eq(message.chatId, chatId as string))
-    }
-  })
-
-  if (!message) {
+  if (!result.message) {
     console.log('Message not found or unauthorized:', messageId)
     throw createError({ statusCode: 404, statusMessage: 'Message not found' })
   }

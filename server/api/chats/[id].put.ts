@@ -12,11 +12,13 @@ export default defineEventHandler(async (event) => {
 
   let sessionUserId: string | undefined
 
-  try {
-    const session = await getUserSession(event)
-    sessionUserId = (session as any).user?.id
-  } catch {
-    // Session devre dışı, query'den devam
+  if (!querySessionId) {
+    try {
+      const session = await getUserSession(event)
+      sessionUserId = (session as any).user?.id
+    } catch {
+      // Session devre dışı, query'den devam
+    }
   }
 
   // Fallback user ID if session is empty (for iframe access)

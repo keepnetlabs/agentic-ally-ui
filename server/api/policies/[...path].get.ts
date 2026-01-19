@@ -1,5 +1,39 @@
 import { extractCompanyId } from '../../utils/company-id'
 
+type PolicyCacheEntry = {
+  text: string
+  policyId: string
+  policyName: string
+  blobUrl: string
+  expiresAt: number
+}
+
+const POLICY_TEXT_CACHE_TTL_MS = 2 * 60 * 1000
+const MAX_POLICY_TEXT_CACHE_SIZE = 200
+const policyTextCache = new Map<string, PolicyCacheEntry>()
+
+const getCachedPolicyText = (cacheKey: string) => {
+  const cached = policyTextCache.get(cacheKey)
+  if (!cached) {
+    return null
+  }
+  if (cached.expiresAt < Date.now()) {
+    policyTextCache.delete(cacheKey)
+    return null
+  }
+  return cached
+}
+
+const setCachedPolicyText = (cacheKey: string, entry: PolicyCacheEntry) => {
+  if (policyTextCache.size >= MAX_POLICY_TEXT_CACHE_SIZE) {
+    const oldestKey = policyTextCache.keys().next().value as string | undefined
+    if (oldestKey) {
+      policyTextCache.delete(oldestKey)
+    }
+  }
+  policyTextCache.set(cacheKey, entry)
+}
+
 /**
  * Extract text from PDF using pdfjs-serverless
  * Works in Cloudflare Workers edge environment
@@ -93,6 +127,18 @@ export default defineEventHandler(async (event) => {
     return returnNotFound('Policy information not found.')
   }
 
+  const cacheKey = `${companyId}:${policy.blobUrl}`
+  const cached = getCachedPolicyText(cacheKey)
+
+  if (cached) {
+    return new Response(JSON.stringify({
+      text: cached.text,
+      policyId: cached.policyId,
+      policyName: cached.policyName,
+      blobUrl: cached.blobUrl
+    }), { headers })
+  }
+
   const r2 = event?.context?.cloudflare?.env?.agentic_ally_policies
 
   if (!r2) {
@@ -132,6 +178,14 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     pdfText = `Error reading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
   }
+
+  setCachedPolicyText(cacheKey, {
+    text: pdfText,
+    policyId: policy.id,
+    policyName: policy.name,
+    blobUrl: policy.blobUrl,
+    expiresAt: Date.now() + POLICY_TEXT_CACHE_TTL_MS
+  })
 
   return new Response(JSON.stringify({
     text: pdfText,

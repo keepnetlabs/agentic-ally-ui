@@ -29,37 +29,51 @@ Nuxt Frontend (Vue 3)
 - Canvas panel for content display
 - ~600 lines of complex logic
 
-### Components (7 total)
+### Components (14 total)
 
 | Component | Purpose | Size |
 |-----------|---------|------|
-| ChatCanvas | Multi-format content viewer | 11.6 KB |
-| DashboardNavbar | Top navigation bar | 688 B |
+| ChatCanvas | Multi-format content viewer | 16.8 KB |
+| EmailCanvas | HTML email previewer | 3.5 KB |
+| HTMLEditorModal | Full-featured HTML editor | 12.8 KB |
+| LandingPageCanvas | Phishing landing page simulator | 7.2 KB |
+| DashboardNavbar | Top navigation bar | 539 B |
 | UserMenu | Profile & theme settings | 4.3 KB |
-| ModelSelect | LLM model dropdown | 358 B |
-| ModalConfirm | Delete confirmation dialog | 585 B |
-| Logo | Company logo | 158 B |
+| ModelSelect | LLM model dropdown | 542 B |
+| ModalConfirm | Delete confirmation dialog | 714 B |
+| Logo | Company logo | 261 B |
 | PreStream | Code syntax highlighting | 978 B |
+| PhishingEmailCard | Chat stream card for emails | 1.9 KB |
+| TrainingUrlCard | Chat stream card for training URLs | 1.9 KB |
+| LandingPageCard | Chat stream card for landing pages | 1.7 KB |
+| ReasoningSection | AI chain-of-thought display | 626 B |
 
 All components auto-imported (no manual imports needed).
 
 ### Composables (State Management)
 
 **useCanvas()**
-- Manages canvas visibility state
-- Content type: 'preview', 'email', 'code', 'html', 'url'
-- Methods: `showCanvas()`, `hideCanvas()`, `updateCanvasContent()`
+- Manages canvas visibility state and active content
+- Content type: 'preview', 'email', 'code', 'html', 'url' active content
+
+**useCanvasTriggers()**
+- Complex logic to detect patterns in chat stream (e.g. TrainingUrl, PhishingEmail)
+- Auto-opens canvas with appropriate content
+
+**useChatClient()**
+- Handles SSE connection and message parsing
+- Manages stream state (text-delta, reasoning-delta)
+
+**useSecureApi()**
+- Wrapper around `$fetch` that automatically adds Auth headers
 
 **useLLM()**
-- Manages selected model (currently hardcoded)
+- Manages selected model
 - Returns: `{ models, model }`
 
 **useChats()**
 - Groups chats by time (Today, Yesterday, Last Week, etc.)
 - Returns: `{ groups }`
-
-**useHighlighter()**
-- Code syntax highlighting via Shiki
 
 ### Layout
 
@@ -85,6 +99,19 @@ DELETE /api/chats/[id]         → Delete chat
 POST   /api/chats/[id]/messages → Save message
 ```
 
+#### Files & Policies (`server/api/files/`, `server/api/policies/`)
+```
+GET    /api/files              → List company files
+POST   /api/files              → Upload PDF policy
+DELETE /api/files/[id]         → Delete policy file
+GET    /api/policies/[...path] → Get policy text/metadata
+```
+
+#### Auth (`server/api/auth/`)
+```
+POST   /api/auth/token         → Exchange auth code for token
+```
+
 #### Utilities
 ```
 GET    /api/ping               → Set init cookie (Safari ITP fix)
@@ -107,10 +134,10 @@ GET    /api/health             → Health check
    - reasoning-delta (thinking tokens)
    - text-end (message complete)
    ↓
-4. Frontend parses stream
+4. Frontend parses stream (useChatClient)
    - Updates message content
-   - Extracts training URLs
-   - Auto-triggers canvas
+   - useCanvasTriggers detects patterns
+   - Auto-triggers canvas components (EmailCanvas, etc.)
    ↓
 5. POST /api/chats/[id]/messages
    - Saves complete assistant message to DB
@@ -126,6 +153,8 @@ users ─────┐
            │              ├─→ messages
            │              │
            └──────────────┘
+
+policies (Standalone, linked via companyId)
 ```
 
 ### Tables
@@ -137,12 +166,14 @@ users ─────┐
 **chats**
 - One per conversation session
 - Stores: id, title, userId, createdAt
-- UserId can fallback to 'guest-session' for anonymous users
 
 **messages**
 - One per message (user or assistant)
 - Stores: id, chatId, role, content, createdAt
-- Cascade delete with chat
+
+**policies**
+- Stores metadata for uploaded policy files
+- Stores: id, companyId, name, size, blobUrl, createdAt
 
 ### Relationships
 

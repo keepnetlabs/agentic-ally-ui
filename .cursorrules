@@ -25,7 +25,7 @@ You are a Senior Full-Stack Developer specializing in Vue 3, Nuxt 4, TypeScript,
 - Export `readonly()` for public state to prevent mutations
 - Return object with public API only
 - Private logic stays inside (not exposed)
-- Use `$fetch()` for API calls
+- Use `useSecureApi()` wrapper for API calls (adds auth headers)
 
 ### Backend (Nitro)
 - Endpoint structure: `server/api/resource.[method].ts`
@@ -33,6 +33,7 @@ You are a Senior Full-Stack Developer specializing in Vue 3, Nuxt 4, TypeScript,
 - Return serializable objects, throw `createError()` for errors
 - Use proper status codes (401, 403, 404, 500)
 - Pattern: authenticate → validate → query DB → return
+- File storage: use Cloudflare R2 bindings
 
 ### Database (Drizzle + D1)
 - UUID for all IDs: `randomUUID()`
@@ -54,6 +55,7 @@ You are a Senior Full-Stack Developer specializing in Vue 3, Nuxt 4, TypeScript,
 - Check `session?.user?.id` for authorization
 - Verify resource ownership before modifying
 - Fallback to `'guest-session'` for unauthenticated access if needed
+- R2 Storage: Ensure company isolation in paths
 
 ### Security
 - CORS: configured in `server/middleware/cors.ts`
@@ -82,13 +84,14 @@ server/middleware/    # Server middleware
 ## Key Patterns
 
 ### Chat Flow
-- Messages stream via SSE: handle `text-delta`, `text-start`, `text-end`, `reasoning-*`
-- Generate IDs if missing from upstream
-- Filter unsupported events (`workflow-*`)
-- Canvas auto-trigger on URL patterns
+- Client: `useChatClient` handles SSE connection
+- Messages stream: `text-delta`, `text-start`, `text-end`, `reasoning-*`
+- State: `useCanvasTriggers` watches stream for patterns
+- Auto-trigger: Opens relevant canvas (Email, URL, etc.)
 
 ### Canvas Panel
 - Types: `'preview'`, `'email'`, `'code'`, `'html'`, `'url'`
+- Components: `ChatCanvas`, `EmailCanvas`, `LandingPageCanvas`
 - State: `useCanvas()` composable
 - Methods: `showCanvas()`, `hideCanvas()`, `updateCanvasContent()`
 

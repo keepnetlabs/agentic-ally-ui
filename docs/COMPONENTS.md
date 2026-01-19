@@ -214,6 +214,75 @@ Automatically uses PreStream for rendering.
 
 ---
 
+---
+
+### EmailCanvas.vue (3.5 KB)
+
+**Purpose**: Renders HTML email previews within the chat canvas.
+
+**Features:**
+- Displays email headers (From, To, Subject)
+- Sanitiszes and renders email body HTML
+- Responsive email container
+
+**Props:**
+- `content`: Email HTML content object
+
+---
+
+### HTMLEditorModal.vue (12.8 KB)
+
+**Purpose**: A full-featured modal for editing HTML content.
+
+**Features:**
+- Code editor with syntax highlighting
+- Live preview toggle
+- Save and Cancel actions
+
+**Usage:**
+Used for refining generated email or landing page templates.
+
+---
+
+### LandingPageCanvas.vue (7.2 KB)
+
+**Purpose**: Renders phishing landing page previews.
+
+**Features:**
+- Simulates a browser window
+- Renders full-page HTML content
+- form interaction simulation
+
+---
+
+### PhishingEmailCard.vue (1.9 KB) & TrainingUrlCard.vue (1.9 KB) & LandingPageCard.vue (1.7 KB)
+
+**Purpose**: Card components displayed in the chat stream to represent generated artifacts.
+
+**Features:**
+- Preview thumbnail or icon
+- Title and description
+- Click to open detailed view in Canvas
+
+---
+
+### ReasoningSection.vue (626 B)
+
+**Purpose**: collapsible section to display the AI's "Chain of Thought" or reasoning steps.
+
+**Features:**
+- Expand/Collapse toggle
+- Displays raw reasoning text from the LLM
+- Automatically shown during streaming if reasoning delta is present
+
+---
+
+### StreamingIndicator.vue (334 B)
+
+**Purpose**: Visual pulse/dot animation to indicate active AI generation.
+
+---
+
 ## Component Best Practices
 
 ### Creating New Components

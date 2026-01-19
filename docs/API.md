@@ -7,9 +7,32 @@
 
 ## Authentication
 
-All endpoints (except `/ping`) require a valid session cookie.
+All endpoints (except `/ping` and `/auth/token`) require a valid session cookie or an `Authorization` header with a Bearer token.
 
-Session is set automatically by creating a chat (uses session ID as fallback).
+For requests requiring a company context, the system extracts the `companyId` from the user's session or token.
+
+## Auth Endpoints
+
+### Exchange Token
+
+**POST** `/auth/token`
+
+Exchanges an authorization code for an access token from the auth server.
+
+**Request Body:**
+```json
+{
+  "code": "auth_code_here",
+  "baseApiUrl": "https://auth.example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "accessToken": "jwt_token_here"
+}
+```
 
 ## Chat Endpoints
 
@@ -258,6 +281,88 @@ Saves a message to the chat (used after AI response completes).
 - 400: Invalid message data
 - 404: Chat not found
 - 401: Unauthorized
+
+---
+
+---
+
+## Files & Policies Endpoints
+
+### List Files
+
+**GET** `/files`
+
+Lists all policy files associated with the user's company.
+
+**Response:**
+```json
+[
+  {
+    "id": "file-uuid",
+    "companyId": "company-123",
+    "name": "Remote Work Policy.pdf",
+    "size": 102400,
+    "blobUrl": "policies/company-123/file-uuid.pdf",
+    "createdAt": 1698765432
+  }
+]
+```
+
+### Upload File
+
+**POST** `/files`
+
+Uploads a PDF policy file (max 50MB).
+
+**Request:** `multipart/form-data`
+- `file`: PDF file
+
+**Response:**
+```json
+{
+  "id": "file-uuid",
+  "name": "Remote Work Policy.pdf",
+  "size": 102400,
+  "blobUrl": "policies/company-123/file-uuid.pdf",
+  "createdAt": 1698765432
+}
+```
+
+### Delete File
+
+**DELETE** `/files/[id]`
+
+Deletes a policy file from storage and database.
+
+**URL Parameters:**
+- `id`: File UUID
+
+**Response:**
+```json
+{
+  "success": true,
+  "id": "file-uuid"
+}
+```
+
+### Get Policy Text
+
+**GET** `/policies/[...path]`
+
+Retrieves policy metadata and extracts text from the stored PDF.
+
+**URL Parameters:**
+- `path`: The relative path of the policy (e.g., `policies/company-123/file.pdf`)
+
+**Response:**
+```json
+{
+  "text": "Extracted text content from PDF...",
+  "policyId": "file-uuid",
+  "policyName": "Remote Work Policy.pdf",
+  "blobUrl": "policies/company-123/file-uuid.pdf"
+}
+```
 
 ---
 

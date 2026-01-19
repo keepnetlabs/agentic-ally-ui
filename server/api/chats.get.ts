@@ -6,16 +6,21 @@ export default defineEventHandler(async (event) => {
 
   let sessionUserId: string | undefined
 
-  try {
-    const session = await getUserSession(event)
-    sessionUserId = (session as any).user?.id
-  } catch {
-    // Session devre dışı, query'den devam
+  if (!querySessionId) {
+    try {
+      const session = await getUserSession(event)
+      sessionUserId = (session as any).user?.id
+    } catch {
+      // Session devre dışı, query'den devam
+    }
   }
 
   // Fallback user ID if session is empty (for iframe access)
   // Priority: querySessionId > sessionUserId > 'guest-session'
   const userId = querySessionId || sessionUserId || 'guest-session'
 
-  return (await useDrizzle().select().from(tables.chats).where(eq(tables.chats.userId, userId))).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+  return await useDrizzle().query.chats.findMany({
+    where: (chat, { eq }) => eq(chat.userId, userId),
+    orderBy: (chat, { desc }) => [desc(chat.createdAt)]
+  })
 })

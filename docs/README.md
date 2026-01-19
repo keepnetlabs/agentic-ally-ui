@@ -76,8 +76,11 @@ server/
 
 ### Key Concepts
 
-**Components** (7 total)
-- ChatCanvas: Multi-format content viewer
+**Components**
+- ChatCanvas: Multi-format content viewer (Email, HTML, URL)
+- EmailCanvas: HTML email previewer
+- HTMLEditorModal: Full-featured HTML editor
+- LandingPageCanvas: Phishing landing page simulator
 - UserMenu: Profile & theme settings
 - ModelSelect: AI model dropdown
 - DashboardNavbar: Top navigation

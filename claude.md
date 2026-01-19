@@ -10,6 +10,7 @@
 - Chat history management
 - Session-based authentication
 - Dark mode support
+- Policy document management
 
 ## Technology Stack
 
@@ -23,6 +24,7 @@
 ### Backend
 - **Server**: Nitro (serverless)
 - **Database**: Cloudflare D1 (SQLite)
+- **File Storage**: Cloudflare R2
 - **ORM**: Drizzle ORM
 - **Session**: nuxt-auth-utils with encrypted cookies
 - **Streaming**: Server-Sent Events (SSE)
@@ -38,14 +40,25 @@
 app/
 ├── components/          # Vue components (auto-imported)
 │   ├── ChatCanvas.vue   # Multi-format content viewer
+│   ├── EmailCanvas.vue  # HTML email previewer
+│   ├── HTMLEditorModal.vue # HTML editor
+│   ├── LandingPageCanvas.vue # Phishing landing page preview
 │   ├── DashboardNavbar.vue
 │   ├── UserMenu.vue     # Theme & profile settings
 │   ├── ModelSelect.vue
 │   ├── ModalConfirm.vue
 │   ├── Logo.vue
+│   ├── PhishingEmailCard.vue
+│   ├── TrainingUrlCard.vue
+│   ├── LandingPageCard.vue
+│   ├── ReasoningSection.vue
+│   ├── StreamingIndicator.vue
 │   └── prose/PreStream.vue # Syntax highlighting
 ├── composables/         # State management
 │   ├── useCanvas.ts     # Canvas visibility & content
+│   ├── useCanvasTriggers.ts # Auto-trigger logic
+│   ├── useChatClient.ts # SSE & stream handling
+│   ├── useSecureApi.ts  # Auth wrapper for fetch
 │   ├── useLLM.ts        # Model selection
 │   ├── useChats.ts      # Chat grouping logic
 │   └── useHighlighter.ts
@@ -57,13 +70,15 @@ app/
 
 server/
 ├── api/
-│   ├── chats.get.ts              # List user's chats
-│   ├── chats.post.ts             # Create chat
-│   ├── chats/[id].get.ts         # Get chat with messages
-│   ├── chats/[id].post.ts        # Stream AI response (SSE proxy)
-│   ├── chats/[id].put.ts         # Update chat
-│   ├── chats/[id].delete.ts      # Delete chat
-│   ├── chats/[id]/messages.post.ts # Save message
+│   ├── auth/
+│   │   └── token.post.ts         # Exchange auth code
+│   ├── chats/
+│   │   ├── ...                   # Chat CRUD operations
+│   ├── files/
+│   │   ├── files.get.ts          # List files
+│   │   └── files.post.ts         # Upload file
+│   ├── policies/
+│   │   └── [...path].get.ts      # Get policy text
 │   ├── health.get.ts
 │   └── ping.get.ts               # Cookie initialization
 ├── middleware/cors.ts            # CORS configuration
@@ -72,24 +87,24 @@ server/
 │   ├── drizzle.ts               # Database client
 │   └── text-utils.ts            # Message utilities
 └── database/
-    ├── schema.ts                # Drizzle schema (users, chats, messages)
+    ├── schema.ts                # Drizzle schema (users, chats, messages, policies)
     └── migrations/              # D1 migrations
 ```
 
 ## Key Components
 
-### ChatCanvas.vue (11.6 KB)
+### ChatCanvas.vue (16.8 KB)
 Displays content in various formats:
 - **URL**: Embedded iframe with reload/fullscreen controls
-- **Email**: HTML email template viewer
+- **Email**: Uses `EmailCanvas` to render HTML emails
 - **Code**: Syntax-highlighted code with copy button
 - **HTML/Preview**: Raw HTML rendering
 - Auto-triggers on URL pattern detection from chat
 
 ### Chat Page ([id].vue)
-- Real-time message streaming with SSE
+- Real-time message streaming with SSE via `useChatClient`
 - Message parsing (text + reasoning parts)
-- Canvas auto-trigger on specific patterns
+- Canvas auto-trigger via `useCanvasTriggers`
 - Chat history with formatted messages
 - Regenerate/stop message controls
 
@@ -104,7 +119,11 @@ Displays content in various formats:
 | PUT | `/api/chats/[id]` | Update chat |
 | DELETE | `/api/chats/[id]` | Delete chat |
 | POST | `/api/chats/[id]/messages` | Save message |
-| GET | `/api/ping` | Set init cookie |
+| POST | `/api/auth/token` | Exchange auth code |
+| GET | `/api/files` | List company files |
+| POST | `/api/files` | Upload PDF policy |
+| DELETE | `/api/files/[id]` | Delete policy file |
+| GET | `/api/policies/[...path]` | Get policy text |
 
 ## Database Schema
 
@@ -123,7 +142,7 @@ users {
 chats {
   id: TEXT (UUID)
   title: TEXT (first 100 chars of prompt)
-  userId: TEXT (FK → users.id, falls back to 'guest-session')
+  userId: TEXT (FK → users.id)
   createdAt: INTEGER (unixepoch)
 }
 
@@ -132,6 +151,15 @@ messages {
   chatId: TEXT (FK → chats.id, CASCADE DELETE)
   role: TEXT ('user' | 'assistant')
   content: TEXT (full message)
+  createdAt: INTEGER (unixepoch)
+}
+
+policies {
+  id: TEXT (UUID)
+  companyId: TEXT
+  name: TEXT
+  size: INTEGER
+  blobUrl: TEXT (R2 path)
   createdAt: INTEGER (unixepoch)
 }
 ```
@@ -169,7 +197,7 @@ yarn deploy           # Deploy to Cloudflare Pages
 
 - **`.cursorrules`** - Development guidelines for Cursor IDE
 - **`nuxt.config.ts`** - Nuxt & session configuration
-- **`wrangler.jsonc`** - Cloudflare Pages & D1 config
+- **`wrangler.jsonc`** - Cloudflare Pages, D1, & R2 config
 - **`server/database/schema.ts`** - Drizzle ORM schema
 - **`server/api/chats/[id].post.ts`** - Complex SSE streaming logic
 
@@ -182,7 +210,8 @@ yarn deploy           # Deploy to Cloudflare Pages
 - Handle `text-delta`, `text-start`, `text-end`, `reasoning-*`
 
 ### Canvas Auto-trigger
-- Detects pattern: `TrainingUrl: https://...`
+- Logic moved to `useCanvasTriggers.ts`
+- Detects pattern: `TrainingUrl: https://...` or `PhishingEmail: ...`
 - Automatically opens canvas panel
 - Updates content via `useCanvas()` composable
 
@@ -191,14 +220,8 @@ yarn deploy           # Deploy to Cloudflare Pages
 - Return generic 404 for unauthorized/not found
 - No internal details in error messages
 
-## Notes
-
-- **Safari ITP Workaround**: `app.vue` handles cookie/storage access
-- **CORS**: Permissive (any origin) - enable iframe embedding
-- **Unused Code Removed**: `useCanvas` helpers & `ChatCanvas` dead functions cleaned up
-- **Components**: All 7 components are actively used (Logo refactored to accept src prop)
-
 ## External Services
 
 - **LLM**: Fleet Agent Worker (SSE endpoint)
 - **Hosting**: Cloudflare (Pages + Workers + D1)
+- **Storage**: Cloudflare R2 (Policy files)

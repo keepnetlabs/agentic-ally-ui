@@ -1,75 +1,77 @@
-# Nuxt Minimal Starter
+# Agentic Ally Platform
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+**Agentic Ally** is an AI-powered platform for creating security awareness training materials. Users interact with an AI chat interface to generate training content on topics like phishing awareness, secure remote work, MFA, and strong passwords.
 
-## Setup
+## Documentation
 
-Make sure to install dependencies:
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[SETUP.md](docs/SETUP.md)**: Local development setup guide.
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**: System design and architecture overview.
+- **[API.md](docs/API.md)**: Complete API reference.
+- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)**: Coding workflow and standards.
+- **[COMPONENTS.md](docs/COMPONENTS.md)**: Vue components guide.
+
+## Quick Setup
+
+### Prerequisites
+
+- Node.js 18+
+- Yarn 1.22+
+
+### Installation
+
+1. Install dependencies:
+   ```bash
+   yarn install
+   ```
+
+2. Setup database:
+   ```bash
+   yarn cf:reset
+   yarn cf:typegen
+   ```
+
+3. Create `.env` file (see `.env.example`):
+   ```env
+   NUXT_SESSION_PASSWORD=...
+   FLEET_AGENT_URL=...
+   NUXT_UI_PRO_LICENSE=...
+   VITE_DEFAULT_TOKEN=...
+   ```
+
+### Development Server
+
+Start the development server on `http://localhost:3001`:
 
 ```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
 yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+### Production Build
 
-Build the application for production:
+Build the application for production (Cloudflare Pages):
 
 ```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
 yarn build
-
-# bun
-bun run build
 ```
 
-Locally preview production build:
+Preview locally:
 
 ```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
 yarn preview
-
-# bun
-bun run preview
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## Tech Stack
+
+- **Frontend**: Vue 3, Nuxt 4, TypeScript, TailwindCSS, Nuxt UI Pro
+- **Backend**: Nitro, Drizzle ORM, Cloudflare D1 (SQLite)
+- **Infrastructure**: Cloudflare Pages + Workers
+- **Authentication**: Session-based with `nuxt-auth-utils`
+
+## Key Features
+
+- **Real-time AI Chat**: Streaming responses using Server-Sent Events (SSE).
+- **Dynamic Content**: Renders URLs, emails, code blocks, and HTML previews directly in the chat canvas.
+- **Secure**: Encrypted sessions and environment-aware configuration.
+- **Responsive**: Modern UI with dark mode support.
