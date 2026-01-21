@@ -1,11 +1,25 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+// @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
+import { navigateTo, refreshNuxtData, useColorMode, useToast } from '#imports'
+import { useRouteParams } from '../composables/useRouteParams'
+import { useAuthToken } from '../composables/useAuthToken'
+import { useSecureApi } from '../composables/useSecureApi'
+import { parseError } from '../utils/error-handler'
+
 const input = ref('')
 const loading = ref(false)
 const colorMode = useColorMode()
+const toast = useToast()
 
-const { buildUrl, companyId, baseApiUrl } = useRouteParams()
+const { buildUrl, companyId, baseApiUrl, sessionId } = useRouteParams()
 const { token: accessToken } = useAuthToken()
 const { secureFetch } = useSecureApi()
+const hasAccessToken = computed(() => Boolean(accessToken.value))
+const hasSessionId = computed(() => Boolean(sessionId.value))
+const isAuthReady = computed(() => hasAccessToken.value)
+const pendingPrompt = ref<string | null>(null)
+const hasShownAuthToast = ref(false)
 
 interface CreateChatResponse {
   id: string
@@ -40,18 +54,62 @@ async function createChat(prompt: string) {
 
     const chatUrl = buildUrl(`/chat/${chat.id}`)
     navigateTo(chatUrl)
-  } catch {
+  } catch (error) {
+    const { title, message, icon } = parseError(error)
+    toast.add({
+      title: title || 'Request failed',
+      description: message || 'Failed to create chat',
+      icon,
+      color: 'error'
+    })
   } finally {
     loading.value = false
   }
+}
+
+const requestChat = async (prompt: string) => {
+  if (!isAuthReady.value) {
+    pendingPrompt.value = prompt
+    if (!hasShownAuthToast.value) {
+      hasShownAuthToast.value = true
+      if (!hasAccessToken.value) {
+        toast.add({
+          title: 'Preparing session',
+          description: 'Waiting for authentication before sending your prompt.',
+          icon: 'i-lucide-loader',
+          color: 'warning'
+        })
+      }
+    }
+    return
+  }
+  if (!hasSessionId.value) {
+    toast.add({
+      title: 'Missing sessionId',
+      description: 'The sessionId is missing from the URL. Request may fail.',
+      icon: 'i-lucide-alert-circle',
+      color: 'warning'
+    })
+  }
+  await createChat(prompt)
 }
 
 function handleSubmit() {
   if (!input.value.trim() || loading.value) return
   const prompt = input.value.trim()
   input.value = ''
-  createChat(prompt)
+  requestChat(prompt)
 }
+
+watch(hasAccessToken, (tokenReady) => {
+  if (!tokenReady || !pendingPrompt.value || loading.value) {
+    return
+  }
+  const prompt = pendingPrompt.value
+  pendingPrompt.value = null
+  hasShownAuthToast.value = false
+  requestChat(prompt)
+})
 
 const quickChats = [
   {
@@ -130,7 +188,7 @@ const examplePrompts = [
               // >=1024px: 3 equal columns; if it wraps, it won't stretch full-width
               'lg:flex-none lg:basis-[calc((100%-1rem)/3)] lg:max-w-[calc((100%-1rem)/3)] lg:min-w-[220px]'
             ]"
-            @click="createChat(quickChat.prompt)"
+            @click="requestChat(quickChat.prompt)"
           >
             <span class="flex items-center gap-2">
               <PhishingIcon v-if="quickChat.icon === 'phishing'" class="h-4 w-4 text-[#2196F3]" />
@@ -151,7 +209,7 @@ const examplePrompts = [
               type="button"
               class="block text-left text-[10px] hover:underline hover:text-primary disabled:opacity-50 disabled:no-underline transition-colors"
               :disabled="loading"
-              @click="createChat(example)"
+              @click="requestChat(example)"
             >
               {{ example }}
             </button>

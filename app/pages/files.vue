@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useFetch } from 'nuxt/app'
 import { useRouteParams } from '../composables/useRouteParams'
+import { useAuthToken } from '../composables/useAuthToken'
+import { useSecureApi } from '../composables/useSecureApi'
 // @ts-ignore - Nuxt auto-imports
 import { useToast } from '#imports'
 // @ts-ignore - Nuxt auto-imports
@@ -32,12 +34,27 @@ const buildHeaders = () => {
 }
 
 // Fetch policies
+const policyHeaders = computed(() => buildHeaders())
+
 // @ts-ignore - Nuxt allows top-level await in script setup
 const { data: policies, refresh: refreshPolicies } = await useFetch('/api/files', {
   key: 'policies',
+  immediate: false,
+  lazy: true,
   credentials: 'include',
-  headers: buildHeaders()
+  headers: policyHeaders
 })
+
+watch(token, (value) => {
+  if (!value) {
+    return
+  }
+  refreshPolicies()
+})
+
+if (token.value) {
+  refreshPolicies()
+}
 
 const selectedFile = ref<File | null>(null)
 const uploading = ref(false)

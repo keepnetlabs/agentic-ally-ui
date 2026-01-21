@@ -255,7 +255,7 @@ const emit = defineEmits<{
 
 const content = ref<CanvasContent | null>(null)
 const { copy } = useClipboard()
-const { baseApiUrl,accessToken } = useRouteParams()
+const { baseApiUrl, accessToken, buildUrl } = useRouteParams()
 
 const { secureFetch } = useSecureApi()
 
@@ -416,11 +416,48 @@ const handleEditorSave = async (newHtml: string) => {
     content.value.html = newHtml
   }
 
+  const savePhishingEdits = async () => {
+    if (!emailData) {
+      return
+    }
+
+    const emailMeta = emailData as unknown as {
+      phishingId?: string
+      language?: string
+      emailKey?: string
+    }
+    const phishingId = emailMeta.phishingId
+    const language = emailMeta.language
+    const emailKey = emailMeta.emailKey
+
+    if (!phishingId || !language) {
+      return
+    }
+
+    const payload = {
+      phishingId,
+      language,
+      ...(emailKey ? { emailKey } : {}),
+      email: { template: newHtml }
+    }
+
+    const saveUrl = buildUrl('/api/phishing/editor/save')
+    console.log('Save phishing email URL:', saveUrl)
+    console.log('Save phishing landing URL (email save):', saveUrl)
+    const saveResponse = await secureFetch(saveUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    })
+    console.log('Save phishing email response:', saveResponse)
+  }
+
   // Save to backend if we have message and chat ID
   if (messageId && chatId) {
     try {
       // First, fetch the current message to preserve other content
-      const currentMessage = await secureFetch<ServerMessage>(`/api/chats/${chatId}/messages/${messageId}`)
+      const currentMessageUrl = buildUrl(`/api/chats/${chatId}/messages/${messageId}`)
+      const currentMessage = await secureFetch<ServerMessage>(currentMessageUrl)
       let fullContent = currentMessage?.content || ''
 
       // For emails, replace only the email wrapper
@@ -447,13 +484,16 @@ const handleEditorSave = async (newHtml: string) => {
         }
       }
 
-      await secureFetch(`/api/chats/${chatId}/messages/${messageId}`, {
+      const updateMessageUrl = buildUrl(`/api/chats/${chatId}/messages/${messageId}`)
+      await secureFetch(updateMessageUrl, {
         method: 'PUT',
         body: {
           content: fullContent
         }
       })
       console.log('Template saved successfully')
+
+      await savePhishingEdits()
 
       // Emit refresh event with updated content to update local state
       emit('refresh', messageId, fullContent)

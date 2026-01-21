@@ -4,6 +4,8 @@ import { LazyModalConfirm } from '#components'
 import { useCanvas } from '../composables/useCanvas'
 import { useChatNavigation } from '../composables/useChatNavigation'
 import { useRouteParams } from '../composables/useRouteParams'
+import { useAuthToken } from '../composables/useAuthToken'
+import { useSecureApi } from '../composables/useSecureApi'
 const { isCanvasVisible, hideCanvas } = useCanvas()
 
 const route = useRoute()
@@ -16,6 +18,8 @@ const { isStreaming, stopStreaming, streamingChatId } = useChatNavigation()
 
 // Get route params helper
 const { buildUrl } = useRouteParams()
+const { token: accessToken } = useAuthToken()
+const { secureFetch } = useSecureApi()
 
 const open = ref(false)
 
@@ -34,9 +38,25 @@ const deleteModal = overlay.create(LazyModalConfirm, {
 
 const sessionId = route.query.sessionId as string
 const chatsUrl = buildUrl('/api/chats')
+const chatListHeaders = computed(() => ({
+  ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {})
+}))
 
 const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   key: 'chats',
+  immediate: false,
+  lazy: true,
+  headers: chatListHeaders,
+  onResponseError({ response }) {
+    if (response?.status === 401 && accessToken.value) {
+      toast.add({
+        title: 'Unauthorized',
+        description: 'Please authenticate again.',
+        icon: 'i-lucide-shield-alert',
+        color: 'error'
+      })
+    }
+  },
   transform: data => data.map(chat => ({
     id: chat.id,
     label: chat.title || 'Untitled',
@@ -46,12 +66,30 @@ const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   }))
 })
 
+watch(accessToken, (value) => {
+  if (!value) {
+    return
+  }
+  refreshChats()
+})
+
+if (accessToken.value) {
+  refreshChats()
+}
+
 onNuxtReady(async () => {
+  if (!accessToken.value) {
+    return
+  }
   const first10 = (chats.value || []).slice(0, 10)
   for (const chat of first10) {
     // prefetch the chat and let the browser cache it
     const prefetchUrl = buildUrl(`/api/chats/${chat.id}`)
-    await $fetch(prefetchUrl)
+    await $fetch(prefetchUrl, {
+      headers: {
+        ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {})
+      }
+    })
   }
 })
 
@@ -110,7 +148,7 @@ async function deleteChat(id: string) {
   }
 
   const deleteUrl = buildUrl(`/api/chats/${id}`)
-  await $fetch(deleteUrl, { method: 'DELETE' })
+  await secureFetch(deleteUrl, { method: 'DELETE' })
 
   toast.add({
     title: 'Chat deleted',

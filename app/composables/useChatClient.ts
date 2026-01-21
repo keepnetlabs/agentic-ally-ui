@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, type Ref } from 'vue'
 
 export const useChatClient = () => {
     // Parse model value into provider and model
@@ -59,9 +59,12 @@ export const useChatClient = () => {
         }
     }
 
-    const createMessages = (chatClient: any, parseAIReasoning: any, parseAIMessage: any) => {
+    const createMessages = (chatClient: any, parseAIReasoning: any, parseAIMessage: any, versionRef?: Ref<number>) => {
         return computed<any[]>(() =>
             chatClient.messages.map((m: any) => {
+                if (versionRef) {
+                    versionRef.value
+                }
                 const reasoning = parseAIReasoning(m)
                 if (reasoning && m.role === 'assistant') {
                     console.log('Message with reasoning:', {

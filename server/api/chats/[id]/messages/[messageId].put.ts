@@ -1,30 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import * as tables from '../../../../database/schema'
+import { resolveChatUserId } from '../../../../utils/iframe-auth'
 
 export default defineEventHandler(async (event) => {
   console.log('Message PUT endpoint called')
-
-  const query = getQuery(event)
   const { id: chatId, messageId } = getRouterParams(event)
   const body = await readBody(event)
-
-  // Get sessionId from URL query parameter (for iframe usage)
-  const querySessionId = query.sessionId as string
-
-  let sessionUserId: string | undefined
-
-  if (!querySessionId) {
-    try {
-      const session = await getUserSession(event)
-      sessionUserId = (session as any).user?.id
-    } catch {
-      // Session devre dışı, query'den devam
-    }
-  }
-
-  // Fallback user ID if session is empty (for iframe access)
-  // Priority: querySessionId > sessionUserId > 'guest-session'
-  const userId = querySessionId || sessionUserId || 'guest-session'
+  const userId = await resolveChatUserId(event)
 
   console.log('Request data:', { chatId, messageId, body, userId })
 

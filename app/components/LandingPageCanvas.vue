@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useSecureApi } from '../composables/useSecureApi'
+import { useRouteParams } from '../composables/useRouteParams'
 import type { LandingPage, ServerMessage } from '../types/chat'
 
 const props = defineProps<{
@@ -15,6 +16,7 @@ const emit = defineEmits<{
 }>()
 
 const { secureFetch } = useSecureApi()
+const { buildUrl } = useRouteParams()
 
 const selectedPageIndex = ref(0)
 const viewMode = ref<'mobile' | 'tablet' | 'desktop'>('desktop')
@@ -41,11 +43,41 @@ const handleEditorSave = async (newHtml: string) => {
     currentPage.value.template = newHtml
   }
 
+  const savePhishingEdits = async () => {
+    const landingPage = props.landingPage as any
+    const phishingId = landingPage?.phishingId as string | undefined
+    const language = landingPage?.language as string | undefined
+    const landingKey = landingPage?.landingKey as string | undefined
+
+    if (!phishingId || !language) {
+      return
+    }
+
+    const payload = {
+      phishingId,
+      language,
+      ...(landingKey ? { landingKey } : {}),
+      landing: {
+        pages: landingPage?.pages ?? []
+      }
+    }
+
+    const saveUrl = buildUrl('/api/phishing/editor/save')
+    console.log('Save phishing landing URL:', saveUrl)
+    const saveResponse = await secureFetch(saveUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    })
+    console.log('Save phishing landing response:', saveResponse)
+  }
+
   // Save to backend if we have message and chat ID
   if (props.messageId && props.chatId) {
     try {
       // First, fetch the current message to preserve other content
-      const currentMessage = await secureFetch<ServerMessage>(`/api/chats/${props.chatId}/messages/${props.messageId}`)
+      const currentMessageUrl = buildUrl(`/api/chats/${props.chatId}/messages/${props.messageId}`)
+      const currentMessage = await secureFetch<ServerMessage>(currentMessageUrl)
       let fullContent = currentMessage?.content || ''
 
       // Encode the entire landing page object as base64
@@ -64,13 +96,16 @@ const handleEditorSave = async (newHtml: string) => {
         fullContent += '\n' + newLandingPageWrapper
       }
 
-      await secureFetch(`/api/chats/${props.chatId}/messages/${props.messageId}`, {
+      const updateMessageUrl = buildUrl(`/api/chats/${props.chatId}/messages/${props.messageId}`)
+      await secureFetch(updateMessageUrl, {
         method: 'PUT',
         body: {
           content: fullContent
         }
       })
       console.log('Landing page template saved successfully')
+
+      await savePhishingEdits()
 
       // Emit refresh event with updated content to update local state
       emit('refresh', props.messageId!, fullContent)

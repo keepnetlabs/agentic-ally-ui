@@ -2,6 +2,7 @@ import { parseAIMessage } from '../../utils/text-utils'
 import { and } from 'drizzle-orm'
 import * as tables from '../../database/schema'
 import { extractCompanyId } from '../../utils/company-id'
+import { resolveChatUserId } from '../../utils/iframe-auth'
 
 defineRouteMeta({
   openAPI: {
@@ -25,31 +26,12 @@ const cleanMetadata = (obj: any) => {
 }
 
 export default defineEventHandler(async (event) => {
-  const query = getQuery(event)
-
   const { id } = getRouterParams(event)
   // TODO: Use readValidatedBody
   const { modelProvider, model, messages, conversationId } = await readBody(event)
 
   const db = useDrizzle()
-
-  // Get sessionId from URL query parameter (for iframe usage)
-  const querySessionId = query.sessionId as string
-
-  let sessionUserId: string | undefined
-
-  if (!querySessionId) {
-    try {
-      const session = await getUserSession(event)
-      sessionUserId = (session as any).user?.id
-    } catch {
-      // Session devre dışı, query'den devam
-    }
-  }
-
-  // Fallback user ID if session is empty (for iframe access)
-  // Priority: querySessionId > sessionUserId > 'guest-session'
-  const userId = querySessionId || sessionUserId || 'guest-session'
+  const userId = await resolveChatUserId(event)
 
   const chat = await db.query.chats.findFirst({
     where: (chat, { eq }) => {

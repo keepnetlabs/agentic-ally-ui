@@ -32,7 +32,7 @@ const clipboard = useClipboard()
 const { model } = useLLM()
 const { isCanvasVisible, toggleCanvas, hideCanvas, clearCanvasContent } = useCanvas()
 const { getModelConfig, createHandleSubmit, createStop, createReload, createMessages, createStatus, createErrorComputed } = useChatClient()
-const { buildUrl, companyId, baseApiUrl } = useRouteParams()
+const { buildUrl, companyId, baseApiUrl, sessionId } = useRouteParams()
 const { token: accessToken, clearToken } = useAuthToken()
 const { secureFetch } = useSecureApi()
 
@@ -137,16 +137,52 @@ const saveMessageWithRetry = async (
   }
 }
 
-// @ts-ignore - Nuxt allows top-level await in script setup
-const { data: chat } = await useFetch<ServerChat>(chatUrl, {
-  key: `chat-${chatId}`,
-  credentials: 'include'  // Allow cookies in cross-origin requests
-})
-console.log(chat.value)
+const chatHeaders = computed(() => ({
+  ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {})
+}))
 
-if (!chat.value) {
-  throw createError({ statusCode: 404, statusMessage: 'Chat not found', fatal: true })
+// @ts-ignore - Nuxt allows top-level await in script setup
+const { data: chat, refresh: refreshChat } = await useFetch<ServerChat>(chatUrl, {
+  key: `chat-${chatId}`,
+  immediate: false,
+  lazy: true,
+  credentials: 'include',  // Allow cookies in cross-origin requests
+  headers: chatHeaders,
+  onResponseError({ response }) {
+    if (response?.status === 401 && accessToken.value) {
+      toast.add({
+        title: 'Unauthorized',
+        description: 'Please authenticate again.',
+        icon: 'i-lucide-shield-alert',
+        color: 'error'
+      })
+    }
+  }
+})
+
+const hasFetchedChat = ref(false)
+const refreshChatSafe = async () => {
+  await refreshChat()
+  hasFetchedChat.value = true
 }
+
+watch([accessToken, sessionId], ([tokenValue, sessionValue]) => {
+  if (!tokenValue || !sessionValue) {
+    return
+  }
+  refreshChatSafe()
+})
+
+if (accessToken.value && sessionId.value) {
+  refreshChatSafe()
+}
+
+watch([hasFetchedChat, chat], ([hasFetched, value]) => {
+  if (hasFetched && !value) {
+    throw createError({ statusCode: 404, statusMessage: 'Chat not found', fatal: true })
+  }
+})
+
 
 const input = ref('')
 
@@ -162,6 +198,7 @@ const chatClient = new Chat({
         ...init,
         headers: {
           ...(init?.headers || {}),
+          ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}),
           ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
           ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
           ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
@@ -214,7 +251,20 @@ const chatClient = new Chat({
   }
 })
 
-const messages = createMessages(chatClient, parseAIReasoning, parseAIMessage)
+const messagesVersion = ref(0)
+const messages = createMessages(chatClient, parseAIReasoning, parseAIMessage, messagesVersion)
+watch(chat, (value) => {
+  if (!value?.messages?.length) {
+    return
+  }
+  chatClient.messages = value.messages.map((m: any) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    parts: m.parts ?? []
+  }))
+  messagesVersion.value += 1
+})
 const status = createStatus(chatClient)
 const error = createErrorComputed(chatClient)
 const lastFinishedMessageId = ref<string | null>(null)
@@ -227,6 +277,19 @@ onBeforeUnmount(() => {
   stop()
 })
 const reload = createReload(chatClient)
+const hasTriggeredInitialReload = ref(false)
+watch(chat, (value) => {
+  if (hasTriggeredInitialReload.value) {
+    return
+  }
+  if (!value?.messages?.length) {
+    return
+  }
+  if (value.messages.length === 1) {
+    hasTriggeredInitialReload.value = true
+    reload()
+  }
+})
 
 // Track streaming state for navigation
 const { setStreaming } = useChatNavigation()
@@ -305,7 +368,8 @@ onMounted(() => {
     hideCanvas()
   }
   
-  if (chat.value?.messages.length === 1) {
+  if (chat.value?.messages.length === 1 && !hasTriggeredInitialReload.value) {
+    hasTriggeredInitialReload.value = true
     reload()
   }
 })
