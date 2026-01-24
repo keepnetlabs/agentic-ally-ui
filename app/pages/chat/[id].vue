@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 // @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
@@ -17,6 +17,7 @@ import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
 import { parseAIMessage, parseAIReasoning } from '../../utils/text-utils'
 import { extractTrainingUrlFromMessage, extractAllPhishingEmailsFromMessage, extractLandingPageFromMessage, getSanitizedContentForTemplate, getAllStreamText, showInCanvas as showInCanvasUtil } from '../../utils/message-utils'
+import { useMentions } from '../../composables/useMentions'
 import { useChatNavigation } from '../../composables/useChatNavigation'
 import { exponentialBackoffWithJitter, DEFAULT_RETRY_CONFIG, type RetryConfig } from '../../utils/retry-handler'
 import type { ServerChat } from '../../types/chat'
@@ -183,8 +184,28 @@ watch([hasFetchedChat, chat], ([hasFetched, value]) => {
   }
 })
 
-
 const input = ref('')
+const {
+  promptRef,
+  promptContainerRef,
+  mentionOpen,
+  mentionResults,
+  mentionIndex,
+  mentionLoading,
+  syncCursorIndex,
+  handlePromptKeydown,
+  handleMentionMouseDown,
+  applyTargetTags,
+  clearSelectedTargets,
+  closeMentionMenu,
+  getMentionInitials
+} = useMentions({
+  input,
+  buildUrl,
+  secureFetch,
+  minMentionLength: 3,
+  debounceMs: 500
+})
 
 const streamUrl = buildUrl(`/api/chats/${chatId}`)
 
@@ -277,6 +298,14 @@ onBeforeUnmount(() => {
   stop()
 })
 const reload = createReload(chatClient)
+
+const handlePromptSubmit = () => {
+  closeMentionMenu()
+  applyTargetTags()
+  handleSubmit()
+  clearSelectedTargets()
+}
+
 const hasTriggeredInitialReload = ref(false)
 watch(chat, (value) => {
   if (hasTriggeredInitialReload.value) {
@@ -483,31 +512,100 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
               </template>
             </UChatMessages>
 
-            <UChatPrompt
-              v-model="input"
-              :error="error"
-              variant="subtle"
-              autocomplete="off"
-              data-1p-ignore
-              data-lpignore="true"
-              data-form-type="other"
-              :class="[
-                'sticky bottom-2 [view-transition-name:chat-prompt] z-10 chat-prompt-custom',
-                input.length === 0 ? 'force-default-height' : ''
-              ]"
-              @submit="handleSubmit"
+            <div
+              ref="promptContainerRef"
+              class="relative sticky bottom-2 z-10 [view-transition-name:chat-prompt] bg-white dark:bg-gray-900"
+              @keydown="handlePromptKeydown"
+              @keyup="syncCursorIndex"
+              @click="syncCursorIndex"
+              @input="syncCursorIndex"
             >
-              <UChatPromptSubmit
-                :status="status"
-                color="info"
-                :ui="{ 
-                  base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
-                }"
-                @stop="stop"
-                @reload="reload"
-              />
+              <UChatPrompt
+                ref="promptRef"
+                v-model="input"
+                :error="error"
+                variant="subtle"
+                autocomplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
+                :class="[
+                  'chat-prompt-custom relative z-20',
+                  input.length === 0 ? 'force-default-height' : ''
+                ]"
+                @submit="handlePromptSubmit"
+              >
+                <UChatPromptSubmit
+                  :status="status"
+                  color="info"
+                  :ui="{ 
+                    base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
+                  }"
+                  @stop="stop"
+                  @reload="reload"
+                />
 
-            </UChatPrompt>
+              </UChatPrompt>
+
+              <div
+                v-if="mentionOpen"
+                class="absolute left-0 right-0 bottom-full mb-2 z-30 pointer-events-none"
+              >
+                <div class="max-h-44 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+                  <div v-if="mentionLoading" class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                    <UIcon name="i-lucide-loader-2" class="h-3.5 w-3.5 animate-spin" />
+                    Loading results...
+                  </div>
+                  <div
+                    v-else-if="mentionResults.length === 0"
+                    class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    <UIcon name="i-lucide-search-x" class="h-3.5 w-3.5" />
+                    No results...
+                  </div>
+                  <button
+                    v-for="(item, index) in mentionResults"
+                    :key="`${item.kind}-${item.id}`"
+                    type="button"
+                    class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 pointer-events-auto"
+                    :class="index === mentionIndex ? 'bg-gray-50 dark:bg-gray-800' : ''"
+                    @mousedown.prevent="handleMentionMouseDown(item)"
+                  >
+                    <div
+                      v-if="!item.avatar"
+                      class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                    >
+                      {{ getMentionInitials(item) }}
+                    </div>
+                    <img
+                      v-else
+                      :src="item.avatar"
+                      :alt="item.name"
+                      class="h-6 w-6 rounded-full"
+                    />
+                    <div class="flex flex-col">
+                      <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
+                        {{ item.name }}
+                        <span
+                          class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          :class="item.kind === 'group'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200'
+                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'"
+                        >
+                          <UIcon :name="item.kind === 'group' ? 'i-lucide-users' : 'i-lucide-user'" class="h-3 w-3" />
+                          {{ item.kind === 'group' ? 'Target Group' : 'Target User' }}
+                        </span>
+                      </span>
+                      <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ item.kind === 'group'
+                      ? `${item.memberCount ?? 0} ${((item.memberCount ?? 0) === 1 || (item.memberCount ?? 0) === 0) ? 'member' : 'members'}`
+                      : item.email }}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
           </UContainer>
         </div>
 

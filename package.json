@@ -25,6 +25,7 @@
     "@nuxt/ui-pro": "^3.3.2",
     "@nuxthub/core": "^0.9.0",
     "@nuxtjs/mdc": "^0.17.2",
+    "@sentry/nuxt": "^10.36.0",
     "ai": "^5.0.76",
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.44.5",

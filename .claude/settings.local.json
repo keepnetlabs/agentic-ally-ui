@@ -15,7 +15,8 @@
       "Read(//c/Users/user/Desktop/Agentic Ally/fleet-v2-main/**)",
       "Bash(cd:*)",
       "Bash(grep:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

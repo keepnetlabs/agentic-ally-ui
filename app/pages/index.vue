@@ -6,6 +6,7 @@ import { useRouteParams } from '../composables/useRouteParams'
 import { useAuthToken } from '../composables/useAuthToken'
 import { useSecureApi } from '../composables/useSecureApi'
 import { parseError } from '../utils/error-handler'
+import { useMentions } from '../composables/useMentions'
 
 const input = ref('')
 const loading = ref(false)
@@ -20,6 +21,28 @@ const hasSessionId = computed(() => Boolean(sessionId.value))
 const isAuthReady = computed(() => hasAccessToken.value)
 const pendingPrompt = ref<string | null>(null)
 const hasShownAuthToast = ref(false)
+
+const {
+  promptRef,
+  promptContainerRef,
+  mentionOpen,
+  mentionResults,
+  mentionIndex,
+  mentionLoading,
+  syncCursorIndex,
+  handlePromptKeydown,
+  handleMentionMouseDown,
+  applyTargetTags,
+  clearSelectedTargets,
+  closeMentionMenu,
+  getMentionInitials
+} = useMentions({
+  input,
+  buildUrl,
+  secureFetch,
+  minMentionLength: 3,
+  debounceMs: 500
+})
 
 interface CreateChatResponse {
   id: string
@@ -95,9 +118,12 @@ const requestChat = async (prompt: string) => {
 }
 
 function handleSubmit() {
+  closeMentionMenu()
+  applyTargetTags()
   if (!input.value.trim() || loading.value) return
   const prompt = input.value.trim()
   input.value = ''
+  clearSelectedTargets()
   requestChat(prompt)
 }
 
@@ -152,26 +178,95 @@ const examplePrompts = [
           How can I help you today?
         </h1>
 
-        <UChatPrompt
-          v-model="input"
-          :status="loading ? 'streaming' : 'ready'"
-          class="[view-transition-name:chat-prompt]"
-          variant="subtle"
-          autocomplete="off"
-          data-1p-ignore
-          data-lpignore="true"
-          data-form-type="other"
-          @submit="handleSubmit"
+        <div
+          ref="promptContainerRef"
+          class="relative"
+          @keydown="handlePromptKeydown"
+          @keyup="syncCursorIndex"
+          @click="syncCursorIndex"
+          @input="syncCursorIndex"
         >
-          <UChatPromptSubmit 
-            color="info" 
+          <UChatPrompt
+            ref="promptRef"
+            v-model="input"
             :status="loading ? 'streaming' : 'ready'"
-            :ui="{ 
-              base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
-            }"
-          />
+            class="[view-transition-name:chat-prompt] relative z-20"
+            variant="subtle"
+            autocomplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+            @submit="handleSubmit"
+          >
+            <UChatPromptSubmit 
+              color="info" 
+              :status="loading ? 'streaming' : 'ready'"
+              :ui="{ 
+                base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
+              }"
+            />
 
-        </UChatPrompt>
+          </UChatPrompt>
+
+          <div
+            v-if="mentionOpen"
+            class="absolute left-0 right-0 bottom-full mb-2 z-30 pointer-events-none"
+          >
+            <div class="max-h-44 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+              <div v-if="mentionLoading" class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                <UIcon name="i-lucide-loader-2" class="h-3.5 w-3.5 animate-spin" />
+                Loading results...
+              </div>
+              <div
+                v-else-if="mentionResults.length === 0"
+                class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400"
+              >
+                <UIcon name="i-lucide-search-x" class="h-3.5 w-3.5" />
+                No results...
+              </div>
+              <button
+                v-for="(item, index) in mentionResults"
+                :key="`${item.kind}-${item.id}`"
+                type="button"
+                class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 pointer-events-auto"
+                :class="index === mentionIndex ? 'bg-gray-50 dark:bg-gray-800' : ''"
+                @mousedown.prevent="handleMentionMouseDown(item)"
+              >
+                <div
+                  v-if="!item.avatar"
+                  class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                >
+                  {{ getMentionInitials(item) }}
+                </div>
+                <img
+                  v-else
+                  :src="item.avatar"
+                  :alt="item.name"
+                  class="h-6 w-6 rounded-full"
+                />
+                <div class="flex flex-col">
+                  <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
+                    {{ item.name }}
+                    <span
+                      class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                      :class="item.kind === 'group'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'"
+                    >
+                      <UIcon :name="item.kind === 'group' ? 'i-lucide-users' : 'i-lucide-user'" class="h-3 w-3" />
+                      {{ item.kind === 'group' ? 'Target Group' : 'Target User' }}
+                    </span>
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ item.kind === 'group'
+                      ? `${item.memberCount ?? 0} ${((item.memberCount ?? 0) === 1 || (item.memberCount ?? 0) === 0) ? 'member' : 'members'}`
+                      : item.email }}
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div class="flex flex-wrap gap-2 w-full justify-center">
           <UButton

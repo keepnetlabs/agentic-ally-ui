@@ -2,13 +2,22 @@
 export default defineNuxtConfig({
   ssr: false,
 
+  sourcemap: {
+    client: 'hidden'
+  },
+
   modules: [
     "nitro-cloudflare-dev",
     "@nuxthub/core",
     "@nuxt/eslint",
     "@nuxt/ui-pro",
     "@nuxtjs/mdc",
-    "nuxt-auth-utils"
+    "nuxt-auth-utils",
+    ["@sentry/nuxt/module", {
+      org: process.env.SENTRY_ORG || '',
+      project: process.env.SENTRY_PROJECT || '',
+      authToken: process.env.SENTRY_AUTH_TOKEN || ''
+    }]
   ],
 
   runtimeConfig: {
@@ -21,6 +30,11 @@ export default defineNuxtConfig({
         // Localhost için false, production için true
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true
+      }
+    },
+    public: {
+      sentry: {
+        dsn: process.env.SENTRY_DSN || ''
       }
     }
   },
@@ -66,5 +80,6 @@ export default defineNuxtConfig({
         braceStyle: '1tbs'
       }
     }
-  }
+  },
+
 })

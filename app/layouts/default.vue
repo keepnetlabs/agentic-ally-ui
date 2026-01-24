@@ -6,6 +6,7 @@ import { useChatNavigation } from '../composables/useChatNavigation'
 import { useRouteParams } from '../composables/useRouteParams'
 import { useAuthToken } from '../composables/useAuthToken'
 import { useSecureApi } from '../composables/useSecureApi'
+import { getSanitizedContentForTemplate } from '../utils/message-utils'
 const { isCanvasVisible, hideCanvas } = useCanvas()
 
 const route = useRoute()
@@ -57,13 +58,17 @@ const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
       })
     }
   },
-  transform: data => data.map(chat => ({
-    id: chat.id,
-    label: chat.title || 'Untitled',
-    to: buildUrl(`/chat/${chat.id}`),
-    icon: 'i-lucide-message-circle',
-    createdAt: chat.createdAt
-  }))
+  transform: data => data.map(chat => {
+    const rawLabel = chat.title || 'Untitled'
+    const sanitizedLabel = getSanitizedContentForTemplate({ content: rawLabel }).trim()
+    return {
+      id: chat.id,
+      label: sanitizedLabel || 'Untitled',
+      to: buildUrl(`/chat/${chat.id}`),
+      icon: 'i-lucide-message-circle',
+      createdAt: chat.createdAt
+    }
+  })
 })
 
 watch(accessToken, (value) => {
