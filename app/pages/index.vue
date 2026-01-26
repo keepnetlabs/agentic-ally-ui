@@ -25,6 +25,7 @@ const hasShownAuthToast = ref(false)
 const {
   promptRef,
   promptContainerRef,
+  mentionListRef,
   mentionOpen,
   mentionResults,
   mentionIndex,
@@ -181,7 +182,7 @@ const examplePrompts = [
         <div
           ref="promptContainerRef"
           class="relative"
-          @keydown="handlePromptKeydown"
+          @keydown.capture="handlePromptKeydown"
           @keyup="syncCursorIndex"
           @click="syncCursorIndex"
           @input="syncCursorIndex"
@@ -190,6 +191,7 @@ const examplePrompts = [
             ref="promptRef"
             v-model="input"
             :status="loading ? 'streaming' : 'ready'"
+            placeholder="Type your message here, or use @ to mention someone"
             class="[view-transition-name:chat-prompt] relative z-20"
             variant="subtle"
             autocomplete="off"
@@ -212,7 +214,7 @@ const examplePrompts = [
             v-if="mentionOpen"
             class="absolute left-0 right-0 bottom-full mb-2 z-30 pointer-events-none"
           >
-            <div class="max-h-44 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+            <div ref="mentionListRef" class="max-h-44 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
               <div v-if="mentionLoading" class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                 <UIcon name="i-lucide-loader-2" class="h-3.5 w-3.5 animate-spin" />
                 Loading results...
@@ -228,6 +230,7 @@ const examplePrompts = [
                 v-for="(item, index) in mentionResults"
                 :key="`${item.kind}-${item.id}`"
                 type="button"
+                :data-mention-index="index"
                 class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 pointer-events-auto"
                 :class="index === mentionIndex ? 'bg-gray-50 dark:bg-gray-800' : ''"
                 @mousedown.prevent="handleMentionMouseDown(item)"

@@ -134,6 +134,20 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
 }
 
+export function getSanitizedTitle(rawTitle: string): string {
+    const content = (rawTitle || '') + ''
+    return content
+        .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
+        .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
+        .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
+        .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
+        .replace(/::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
+        .replace(/::ui:target_user::[^\n]*/g, '')
+        .replace(/::\/ui:target_user::/g, '')
+        .replace(/^[A-Za-z0-9+/]{20,}={0,2}$/gm, '')
+        .replace(/\n{2,}/g, '\n')
+}
+
 // Get all stream text from message parts
 export function getAllStreamText(message: any): string {
     const parts = extractTextPartsForTemplate(message) || []

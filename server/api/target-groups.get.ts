@@ -31,11 +31,19 @@ const parseLimit = (value: unknown, fallback = 8) => {
   return Math.min(Math.max(parsed, 1), 20)
 }
 
+const resolveBaseApiUrl = (value: string) => {
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (trimmed === 'https://test-ui.devkeepnet.com') {
+    return 'https://test-api.devkeepnet.com'
+  }
+  return trimmed
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const q = typeof query.q === 'string' ? normalize(query.q) : ''
   const limit = parseLimit(query.limit, 8)
-  const baseApiUrl = typeof query.baseApiUrl === 'string' ? query.baseApiUrl.trim() : ''
+  const baseApiUrl = typeof query.baseApiUrl === 'string' ? resolveBaseApiUrl(query.baseApiUrl) : ''
 
   if (!q || q.length < 3) {
     return []
@@ -52,9 +60,9 @@ export default defineEventHandler(async (event) => {
 
   const companyId =
     (typeof query.companyId === 'string' ? query.companyId.trim() : '') ||
-    (getHeader(event, 'x-company-id') ?? '')
+    (getHeader(event, 'x-ir-company-id') ?? '')
 
-  const targetGroupsUrl = `${baseApiUrl.replace(/\/+$/, '')}/api/target-groups/search`
+  const targetGroupsUrl = `${baseApiUrl}/api/target-groups/search`
 
   const payload = {
     pageNumber: 1,
@@ -91,7 +99,7 @@ export default defineEventHandler(async (event) => {
     headers: {
       Authorization: authorization,
       'Content-Type': 'application/json',
-      ...(companyId ? { 'X-COMPANY-ID': companyId } : {})
+      ...(companyId ? { 'X-IR-COMPANY-ID': companyId } : {})
     },
     body: payload
   })

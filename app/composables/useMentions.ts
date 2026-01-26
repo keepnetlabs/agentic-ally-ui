@@ -51,6 +51,7 @@ export const useMentions = ({
   const selectedTargetGroup = ref<MentionGroup | null>(null)
   const promptRef = ref<unknown>(null)
   const promptContainerRef = ref<HTMLElement | null>(null)
+  const mentionListRef = ref<HTMLElement | null>(null)
   let mentionSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
   const getPromptInput = () => {
@@ -62,6 +63,11 @@ export const useMentions = ({
   }
 
   const closeMentionMenu = () => {
+    if (mentionSearchTimeout) {
+      clearTimeout(mentionSearchTimeout)
+      mentionSearchTimeout = null
+    }
+    mentionLoading.value = false
     mentionOpen.value = false
     mentionQuery.value = ''
     mentionResults.value = []
@@ -69,7 +75,24 @@ export const useMentions = ({
     mentionIndex.value = 0
   }
 
+  const scrollActiveMentionIntoView = () => {
+    nextTick(() => {
+      const container = mentionListRef.value
+      if (!container) {
+        return
+      }
+      const active = container.querySelector(`[data-mention-index="${mentionIndex.value}"]`) as HTMLElement | null
+      if (!active) {
+        return
+      }
+      active.scrollIntoView({ block: 'nearest' })
+    })
+  }
+
   const syncCursorIndex = (event?: Event) => {
+    if (event instanceof KeyboardEvent && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(event.key)) {
+      return
+    }
     const target = event?.target as HTMLTextAreaElement | HTMLInputElement | null
     const inputEl = target && 'selectionStart' in target ? target : getPromptInput()
     if (!inputEl || inputEl.selectionStart === null) {
@@ -93,12 +116,17 @@ export const useMentions = ({
       try {
         mentionLoading.value = true
         mentionOpen.value = true
-        const usersUrl = buildUrl(`/api/users?q=${encodeURIComponent(query)}&limit=8`)
-        const groupsUrl = buildUrl(`/api/target-groups?q=${encodeURIComponent(query)}&limit=8`)
+        const baseOrigin = process.client ? window.location.origin : 'http://localhost'
+        const usersUrl = new URL(buildUrl('/api/users'), baseOrigin)
+        usersUrl.searchParams.set('q', query)
+        usersUrl.searchParams.set('limit', '8')
+        const groupsUrl = new URL(buildUrl('/api/target-groups'), baseOrigin)
+        groupsUrl.searchParams.set('q', query)
+        groupsUrl.searchParams.set('limit', '8')
 
         const [usersResult, groupsResult] = await Promise.allSettled([
-          secureFetch<MentionUser[]>(usersUrl, { method: 'GET' }),
-          secureFetch<MentionGroup[]>(groupsUrl, { method: 'GET' })
+          secureFetch<MentionUser[]>(usersUrl.toString(), { method: 'GET' }),
+          secureFetch<MentionGroup[]>(groupsUrl.toString(), { method: 'GET' })
         ])
 
         const users = usersResult.status === 'fulfilled' ? usersResult.value : []
@@ -124,6 +152,7 @@ export const useMentions = ({
         mentionResults.value = combined
         mentionIndex.value = 0
         mentionOpen.value = true
+        scrollActiveMentionIntoView()
       } catch {
         mentionResults.value = []
       } finally {
@@ -136,7 +165,7 @@ export const useMentions = ({
     const currentText = input.value
     const cursor = cursorIndex.value
     const beforeCursor = currentText.slice(0, cursor)
-    const match = beforeCursor.match(/@([\w.+-]*)$/)
+    const match = beforeCursor.match(/(?:^|\s)@([\w.+-]*)$/)
     if (!match) {
       closeMentionMenu()
       return
@@ -148,7 +177,8 @@ export const useMentions = ({
       return
     }
     mentionQuery.value = query
-    mentionStartIndex.value = cursor - match[0].length
+    const atIndex = beforeCursor.lastIndexOf('@')
+    mentionStartIndex.value = atIndex >= 0 ? atIndex : cursor - match[0].length
     queueMentionSearch(query)
   }
 
@@ -204,6 +234,7 @@ export const useMentions = ({
     }
 
     if (event.key === 'Backspace') {
+      event.stopPropagation()
       if (mentionSearchTimeout) {
         clearTimeout(mentionSearchTimeout)
         mentionSearchTimeout = null
@@ -215,18 +246,23 @@ export const useMentions = ({
 
     if (event.key === 'ArrowDown') {
       event.preventDefault()
+      event.stopPropagation()
       mentionIndex.value = (mentionIndex.value + 1) % mentionResults.value.length
+      scrollActiveMentionIntoView()
       return
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault()
+      event.stopPropagation()
       mentionIndex.value = (mentionIndex.value - 1 + mentionResults.value.length) % mentionResults.value.length
+      scrollActiveMentionIntoView()
       return
     }
 
     if (event.key === 'Enter') {
       event.preventDefault()
+      event.stopPropagation()
       const selected = mentionResults.value[mentionIndex.value]
       if (selected) {
         selectMention(selected)
@@ -235,6 +271,7 @@ export const useMentions = ({
     }
 
     if (event.key === 'Escape') {
+      event.stopPropagation()
       closeMentionMenu()
     }
   }
@@ -286,6 +323,7 @@ export const useMentions = ({
   return {
     promptRef,
     promptContainerRef,
+    mentionListRef,
     mentionOpen,
     mentionResults,
     mentionIndex,

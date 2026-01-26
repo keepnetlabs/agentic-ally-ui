@@ -6,7 +6,7 @@ import { useChatNavigation } from '../composables/useChatNavigation'
 import { useRouteParams } from '../composables/useRouteParams'
 import { useAuthToken } from '../composables/useAuthToken'
 import { useSecureApi } from '../composables/useSecureApi'
-import { getSanitizedContentForTemplate } from '../utils/message-utils'
+import { getSanitizedContentForTemplate, getSanitizedTitle } from '../utils/message-utils'
 const { isCanvasVisible, hideCanvas } = useCanvas()
 
 const route = useRoute()
@@ -60,7 +60,7 @@ const { data: chats, refresh: refreshChats } = await useFetch(chatsUrl, {
   },
   transform: data => data.map(chat => {
     const rawLabel = chat.title || 'Untitled'
-    const sanitizedLabel = getSanitizedContentForTemplate({ content: rawLabel }).trim()
+    const sanitizedLabel = getSanitizedTitle(rawLabel).trim()
     return {
       id: chat.id,
       label: sanitizedLabel || 'Untitled',
