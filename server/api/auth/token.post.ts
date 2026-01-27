@@ -1,7 +1,15 @@
 import { extractCompanyId } from '../../utils/company-id'
 
+const resolveBaseApiUrl = (value: string) => {
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (trimmed === 'https://test-ui.devkeepnet.com') {
+    return 'https://test-api.devkeepnet.com'
+  }
+  return trimmed
+}
+
 export default defineEventHandler(async (event) => {
-  const { code, baseApiUrl } = await readBody(event)
+  const { code, baseApiUrl: rawBaseApiUrl } = await readBody(event)
 
   if (!code) {
     throw createError({
@@ -10,12 +18,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (!baseApiUrl) {
+  if (!rawBaseApiUrl) {
     throw createError({
       statusCode: 400,
       statusMessage: 'baseApiUrl is required'
     })
   }
+
+  const baseApiUrl = resolveBaseApiUrl(rawBaseApiUrl)
 
   try {
     // Call external auth API to exchange code for token
