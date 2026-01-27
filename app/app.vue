@@ -7,6 +7,7 @@ const router = useRouter()
 const { isStreaming, stopStreaming } = useChatNavigation()
 const { code, baseApiUrl, accessToken: queryAccessToken } = useRouteParams()
 const { setToken } = useAuthToken()
+const { exchangeAuthToken } = useAuthTokenExchange()
 
 // Global streaming check on route navigation
 router.beforeEach(async (to, from) => {
@@ -112,27 +113,7 @@ onMounted(async () => {
 
   // Handle auth code exchange if present
   if (code.value && baseApiUrl.value) {
-    try {
-      const response = await $fetch('/api/auth/token', {
-        method: 'POST',
-        body: {
-          code: code.value,
-          baseApiUrl: baseApiUrl.value
-        }
-      })
-
-      if (response && response.accessToken) {
-        // Save token to localStorage using composable
-        try {
-          setToken(response.accessToken)
-        } catch (storageError) {
-          // localStorage failed - likely cross-origin iframe without storage access
-          console.warn('localStorage not available in this context', storageError)
-        }
-      }
-    } catch (error: any) {
-      console.error('Token exchange failed:', error)
-    }
+    await exchangeAuthToken(code.value, baseApiUrl.value)
   }
 
   // Color mode'u parent'a gönder (iframe içindeyse)
