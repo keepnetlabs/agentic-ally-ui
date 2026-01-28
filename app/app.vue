@@ -96,8 +96,41 @@ const sendColorModeToParent = () => {
   }
 }
 
+const canUseStorage = () => {
+  try {
+    const probeKey = '__storage_probe__'
+    window.localStorage.setItem(probeKey, '1')
+    window.localStorage.removeItem(probeKey)
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
 onMounted(async () => {
   siteUrl.value = window.location.origin
+
+  // Sadece Safari'de çalışsın
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+  const isInIframe = window.parent !== window
+  const hasStorageApi = 'requestStorageAccess' in document
+
+  // Safari iframe cookie/storage access kontrolü
+  if (isSafari && isInIframe && hasStorageApi) {
+    try {
+      const hasAccess = await document.hasStorageAccess()
+      if (!hasAccess) {
+        showSafariPrompt.value = true
+        return
+      }
+    } catch (e) {
+      console.log('Storage Access API not available')
+    }
+  }
+
+  if (!canUseStorage()) {
+    return
+  }
 
   // İlk cookie set et
   $fetch('/api/ping').catch(() => {})
@@ -125,20 +158,7 @@ onMounted(async () => {
     mediaQuery.addEventListener('change', sendColorModeToParent)
   }
 
-  // Sadece Safari'de çalışsın
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-
-  if (isSafari && window.parent !== window && 'requestStorageAccess' in document) {
-    try {
-      const hasAccess = await document.hasStorageAccess()
-      if (!hasAccess) {
-        // Safari'de cookie access yok, kullanıcıya göster
-        showSafariPrompt.value = true
-      }
-    } catch (e) {
-      console.log('Storage Access API not available')
-    }
-  }
+  // Safari'de iframe prompt'u yukarıda ele alindi
 })
 
 // Color mode değiştiğinde parent'a bildir
