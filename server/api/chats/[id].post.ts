@@ -163,9 +163,81 @@ export default defineEventHandler(async (event) => {
             const jsonText = trimmed.slice('data: '.length)
             try {
               const obj = JSON.parse(jsonText)
+              // Log ALL incoming events to debug
+              console.log('[SSE] Incoming event type:', obj?.type)
               if (obj && typeof obj === 'object' && typeof obj.type === 'string') {
                 // Clean metadata from content
                 cleanMetadata(obj)
+
+                // === MASTRA V1: Convert data-ui-signal to text-delta for database persistence ===
+                // This ensures UI signals are saved to database and work after page refresh
+                if (obj.type === 'data-ui-signal') {
+                  console.log('[data-ui-signal] Original:', JSON.stringify(obj))
+                  if (obj.data?.message) {
+                    // LLM doesn't send text-start anymore, so we need full text lifecycle
+                    // Each UI signal gets its own text-start -> text-delta -> text-end
+                    const uiTextId = `ui-text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+                    // 1. text-start (SSE format: data: {...}\n\n)
+                    const textStart = { type: 'text-start', id: uiTextId }
+                    console.log('[data-ui-signal] Sending text-start:', JSON.stringify(textStart))
+                    controller.enqueue('data: ' + JSON.stringify(textStart) + '\n\n')
+
+                    // 2. text-delta
+                    const textDelta = { type: 'text-delta', id: uiTextId, delta: obj.data.message }
+                    console.log('[data-ui-signal] Sending text-delta:', JSON.stringify(textDelta))
+                    controller.enqueue('data: ' + JSON.stringify(textDelta) + '\n\n')
+
+                    // 3. text-end
+                    const textEnd = { type: 'text-end', id: uiTextId }
+                    console.log('[data-ui-signal] Sending text-end:', JSON.stringify(textEnd))
+                    controller.enqueue('data: ' + JSON.stringify(textEnd) + '\n\n')
+                  } else {
+                    console.log('[data-ui-signal] No data.message, passing as-is')
+                    controller.enqueue(line)
+                  }
+                  newlineIndex = buffer.indexOf('\n')
+                  continue
+                }
+
+                // === MASTRA V1: Convert data-reasoning to legacy reasoning-* format ===
+                // Mastra sends: { type: "data-reasoning", data: { event: "start"|"delta"|"end", id, text } }
+                // SDK expects:  { type: "reasoning-start|delta|end", id, text }
+                if (obj.type === 'data-reasoning' && obj.data) {
+                  const { event, id, text } = obj.data
+                  console.log('[data-reasoning] Original:', JSON.stringify(obj))
+
+                  // Track reasoning ID
+                  if (event === 'start') {
+                    lastReasoningId = id || `reasoning-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                  }
+                  const reasoningId = id || lastReasoningId || `reasoning-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+                  let legacyEvent: any = null
+                  if (event === 'start') {
+                    legacyEvent = { type: 'reasoning-start', id: reasoningId }
+                  } else if (event === 'delta' && text) {
+                    // SDK expects 'delta' field, not 'text'
+                    legacyEvent = { type: 'reasoning-delta', id: reasoningId, delta: text }
+                  } else if (event === 'end') {
+                    legacyEvent = { type: 'reasoning-end', id: reasoningId }
+                  }
+
+                  if (legacyEvent) {
+                    console.log('[data-reasoning] Converted:', JSON.stringify(legacyEvent))
+                    controller.enqueue('data: ' + JSON.stringify(legacyEvent) + '\n\n')
+                  }
+                  newlineIndex = buffer.indexOf('\n')
+                  continue
+                }
+
+                // Pass through other data-* events (data-tool-progress, etc.)
+                if (obj.type.startsWith('data-')) {
+                  controller.enqueue(line)
+                  newlineIndex = buffer.indexOf('\n')
+                  continue
+                }
+
                 // Generate unique ID for text-start events if missing
                 if ((obj.type === 'text-start' || obj.type === 'text-delta' || obj.type === 'text-end') && !obj.id) {
                   if (obj.type === 'text-start') {
@@ -178,7 +250,7 @@ export default defineEventHandler(async (event) => {
                   }
                 }
 
-                // Generate unique ID for reasoning events if missing
+                // Generate unique ID for reasoning events if missing (legacy format)
                 if ((obj.type === 'reasoning-start' || obj.type === 'reasoning-delta' || obj.type === 'reasoning-end') && !obj.id) {
                   if (obj.type === 'reasoning-start') {
                     lastReasoningId = `reasoning-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`

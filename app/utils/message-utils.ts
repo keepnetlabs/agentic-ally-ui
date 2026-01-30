@@ -21,9 +21,19 @@ export function base64ToUtf8(base64: string): string {
     }
 }
 
-// Extract training URL from message (::ui:canvas_open:: format)
+// Extract training URL from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:canvas_open::) formats
 export function extractTrainingUrlFromMessage(msg: any): string | null {
-    // Check parts first (streaming)
+    // 1️⃣ MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const canvasSignal = msg.uiSignals.find((s: any) => s.signal === 'canvas_open')
+        if (canvasSignal?.message) {
+            const match = canvasSignal.message.match(/::ui:canvas_open::([^\s\n]+)/)
+            if (match?.[1]) return match[1].trim()
+        }
+    }
+
+    // 2️⃣ Legacy: Check parts first (streaming)
     // Format: ::ui:canvas_open::${trainingUrl}\n
     const parts = extractTextPartsForTemplate(msg)
     for (const p of parts) {
@@ -41,9 +51,25 @@ export function extractTrainingUrlFromMessage(msg: any): string | null {
     return mc && mc[1] ? mc[1].trim() : null
 }
 
-// Extract landing page from message (::ui:landing_page:: format)
+// Extract landing page from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:landing_page::) formats
 export function extractLandingPageFromMessage(msg: any): any | null {
-    // Helper function to decode base64 and extract landing page
+    // 1️⃣ MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const landingSignal = msg.uiSignals.find((s: any) => s.signal === 'landing_page')
+        if (landingSignal?.message) {
+            try {
+                const match = landingSignal.message.match(/::ui:landing_page::([^:]+)::/)
+                if (match?.[1]) {
+                    return JSON.parse(base64ToUtf8(match[1].trim()))
+                }
+            } catch (error) {
+                console.error('Failed to parse landing_page from uiSignals:', error)
+            }
+        }
+    }
+
+    // 2️⃣ Legacy: Helper function to decode base64 and extract landing page
     const extractAndDecode = (text: string): any | null => {
         // Match: ::ui:landing_page::<base64>::/ui:landing_page::
         const match = text.match(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/)
@@ -73,9 +99,31 @@ export function extractLandingPageFromMessage(msg: any): any | null {
     return extractAndDecode(content)
 }
 
-// Extract all phishing emails from message (::ui:phishing_email:: format)
+// Extract all phishing emails from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:phishing_email::) formats
 export function extractAllPhishingEmailsFromMessage(msg: any): any[] {
-    // Helper function to decode base64 and extract all email contents
+    // 1️⃣ MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const emailSignals = msg.uiSignals.filter((s: any) => s.signal === 'phishing_email')
+        if (emailSignals.length > 0) {
+            const emails: any[] = []
+            for (const signal of emailSignals) {
+                if (signal?.message) {
+                    try {
+                        const match = signal.message.match(/::ui:phishing_email::([^:]+)::/)
+                        if (match?.[1]) {
+                            emails.push(JSON.parse(base64ToUtf8(match[1].trim())))
+                        }
+                    } catch (error) {
+                        console.error('Failed to parse phishing_email from uiSignals:', error)
+                    }
+                }
+            }
+            if (emails.length > 0) return emails
+        }
+    }
+
+    // 2️⃣ Legacy: Helper function to decode base64 and extract all email contents
     const extractAndDecodeAll = (text: string): any[] => {
         // Match all occurrences: ::ui:phishing_email::<base64>::/ui:phishing_email::
         const matches = [...text.matchAll(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g)]

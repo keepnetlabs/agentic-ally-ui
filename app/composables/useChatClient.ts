@@ -74,12 +74,30 @@ export const useChatClient = () => {
                         parts: m.parts
                     })
                 }
+
+                // Filter text parts (both legacy and new formats)
+                const textParts = (m.parts ?? []).filter((p: any) => {
+                    if (!p) return false
+                    // Legacy text formats
+                    if (p.type === 'text-delta' || p.type === 'text') return true
+                    // Exclude data-* events from text parts (they're handled separately)
+                    return false
+                })
+
+                // Extract data-* events for separate handling
+                const dataEvents = (m.parts ?? []).filter((p: any) => {
+                    if (!p || typeof p.type !== 'string') return false
+                    return p.type.startsWith('data-')
+                })
+
                 return {
                     id: m.id,
                     role: m.role,
                     content: m.content || parseAIMessage(m),
                     parts: m.parts ?? [],
-                    textParts: (m.parts ?? []).filter((p: any) => p && (p.type === 'text-delta' || p.type === 'text')),
+                    textParts,
+                    dataEvents, // MASTRA V1: Expose data-* events
+                    uiSignals: m.uiSignals ?? [], // MASTRA V1: UI signals for cards
                     reasoning
                 }
             })

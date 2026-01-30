@@ -277,7 +277,20 @@ const chatClient = new Chat({
 })
 
 const messagesVersion = ref(0)
-const messages = createMessages(chatClient, parseAIReasoning, parseAIMessage, messagesVersion)
+// MASTRA V1: Store UI signals separately (reactive Map by message ID)
+const uiSignalsMap = ref<Map<string, any[]>>(new Map())
+
+const baseMessages = createMessages(chatClient, parseAIReasoning, parseAIMessage, messagesVersion)
+
+// MASTRA V1: Wrap messages to include uiSignals from reactive Map
+const messages = computed(() => {
+  // Access Map to make this computed reactive to Map changes
+  const signalsMap = uiSignalsMap.value
+  return baseMessages.value.map((m: any) => ({
+    ...m,
+    uiSignals: signalsMap.get(m.id) || []
+  }))
+})
 watch(chat, (value) => {
   if (!value?.messages?.length) {
     return
@@ -344,7 +357,7 @@ const wrappedHideCanvas = () => {
   hideCanvas()
 }
 
-const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
+const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
 
 // Wrap canvas open functions to track canvas type
 const openCanvasWithEmail = (email: any, messageId: string) => {
@@ -409,19 +422,76 @@ onMounted(() => {
   }
 })
 
-// Also watch the concatenated stream text to catch updates where parts length does not change
+// Track last processed parts count for data-* event detection
+const lastProcessedPartsCount = ref(0)
+
+// UNIFIED WATCHER: Handle both legacy (text-based) and MASTRA V1 (data-*) events
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
-    return last && last.role === 'assistant' ? getAllStreamText(last) : ''
-  },
-  () => {
-    const last = messages.value[messages.value.length - 1]
-    if (!last || last.role !== 'assistant') return
-    if (status.value === 'streaming') {
-      maybeProcessUiSignals(last)
+    if (!last || last.role !== 'assistant') return null
+    return {
+      id: last.id,
+      partsCount: last.parts?.length || 0,
+      // Include text hash to detect text changes even when parts count stays same
+      textHash: getAllStreamText(last).length
     }
-  }
+  },
+  (current, previous) => {
+    if (!current) return
+    if (status.value !== 'streaming') return
+
+    const last = messages.value[messages.value.length - 1]
+    if (!last) return
+
+    // Reset counter when message ID changes
+    if (current.id !== previous?.id) {
+      lastProcessedPartsCount.value = 0
+    }
+
+    const parts = last.parts || []
+
+    // 1️⃣ Process new data-* events (MASTRA V1)
+    for (let i = lastProcessedPartsCount.value; i < parts.length; i++) {
+      const part = parts[i]
+      if (part?.type?.startsWith?.('data-')) {
+        handleDataEvent(part)
+
+        // Find the message in chatClient
+        const clientMessage = chatClient.messages.find((m: any) => m.id === last.id) as any
+        if (clientMessage) {
+          // 🔧 Ensure data-reasoning events are in parts for parseAIReasoning
+          if (part.type === 'data-reasoning' && !clientMessage.parts?.includes(part)) {
+            clientMessage.parts = clientMessage.parts || []
+            clientMessage.parts.push(part)
+          }
+
+          // 🔧 Store UI signals in reactive Map (not on message object)
+          if (part.type === 'data-ui-signal' && part.data) {
+            const messageId = last.id
+            if (!uiSignalsMap.value.has(messageId)) {
+              uiSignalsMap.value.set(messageId, [])
+            }
+            const signals = uiSignalsMap.value.get(messageId)!
+            // Avoid duplicates
+            const exists = signals.some(
+              (s: any) => s.signal === part.data.signal && s.message === part.data.message
+            )
+            if (!exists) {
+              signals.push(part.data)
+            }
+          }
+
+          messagesVersion.value += 1 // Trigger reactivity
+        }
+      }
+    }
+    lastProcessedPartsCount.value = parts.length
+
+    // 2️⃣ Also check for legacy UI signals in text (backward compatibility)
+    maybeProcessUiSignals(last)
+  },
+  { deep: true }
 )
 
 function handleCanvasRefresh(messageId: string, newContent: string) {

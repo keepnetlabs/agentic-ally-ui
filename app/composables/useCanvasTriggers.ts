@@ -1,6 +1,7 @@
 import { ref, nextTick, watch } from 'vue'
 import { base64ToUtf8, getAllStreamText, extractTrainingUrlFromMessage, extractLandingPageFromMessage } from '../utils/message-utils'
 import { parseAIMessage } from '../utils/text-utils'
+import { useStreamEvents, type PhishingEmailPayload, type LandingPagePayload } from './useStreamEvents'
 
 export const useCanvasTriggers = (
     canvasRef: any,
@@ -15,6 +16,51 @@ export const useCanvasTriggers = (
     const hasCanvasOpenedForCurrentMessage = ref(false)
     const hasEmailRenderedForCurrentMessage = ref(false)
     const hasLandingPageRenderedForCurrentMessage = ref(false)
+
+    // =====================================
+    // MASTRA V1: Stream Event Handlers
+    // =====================================
+
+    // Get current message ID for canvas operations
+    const getCurrentMessageId = (): string | undefined => {
+        const last = messages.value?.[messages.value.length - 1]
+        return last?.id
+    }
+
+    // Forward declarations for canvas functions (defined below)
+    // Using arrow functions with closures to avoid hoisting issues
+    let openCanvasWithUrlFn: (url: string, title?: string) => Promise<void>
+    let openCanvasWithEmailFn: (emailData: any, messageId?: string) => Promise<void>
+    let openCanvasWithLandingPageFn: (landingPage: any, messageId?: string) => Promise<void>
+
+    // Initialize stream event handlers with lazy binding
+    const streamEventHandlers = {
+        onPhishingEmail: (payload: PhishingEmailPayload) => {
+            if (hasEmailRenderedForCurrentMessage.value) return
+            hasEmailRenderedForCurrentMessage.value = true
+            openCanvasWithEmailFn(payload, getCurrentMessageId())
+        },
+        onLandingPage: (payload: LandingPagePayload) => {
+            if (hasLandingPageRenderedForCurrentMessage.value) return
+            hasLandingPageRenderedForCurrentMessage.value = true
+            openCanvasWithLandingPageFn(payload, getCurrentMessageId())
+        },
+        onCanvasOpen: (url: string) => {
+            if (hasCanvasOpenedForCurrentMessage.value) return
+            hasCanvasOpenedForCurrentMessage.value = true
+            openCanvasWithUrlFn(url)
+        }
+    }
+
+    const { handleStreamEvent } = useStreamEvents(streamEventHandlers)
+
+    /**
+     * Handle incoming stream data events (called from Chat transport)
+     * This is the main entry point for MASTRA V1 data-* events
+     */
+    const handleDataEvent = (event: unknown) => {
+        handleStreamEvent(event)
+    }
 
     const openCanvasWithUrl = async (url: string, title?: string) => {
         if (!url) return
@@ -87,6 +133,11 @@ export const useCanvasTriggers = (
         })
     }
 
+    // Bind forward references now that functions are defined
+    openCanvasWithUrlFn = openCanvasWithUrl
+    openCanvasWithEmailFn = openCanvasWithEmail
+    openCanvasWithLandingPageFn = openCanvasWithLandingPage
+
     const checkAndTriggerCanvas = (message: any) => {
         const content = message.content || parseAIMessage(message)
         if (typeof content === 'string') {
@@ -148,50 +199,37 @@ export const useCanvasTriggers = (
         }
     }
 
-    // Reset the processed flags whenever the last message changes
-    watch(() => messages.value[messages.value.length - 1]?.id, () => {
+    // Helper to reset all canvas flags
+    const resetCanvasFlags = () => {
         hasCanvasOpenedForCurrentMessage.value = false
         hasEmailRenderedForCurrentMessage.value = false
         hasLandingPageRenderedForCurrentMessage.value = false
-    })
+    }
 
-    // Close canvas when switching to different chat
-    watch(() => route.params.id, () => {
-        if (isCanvasVisible.value) {
-            hideCanvas()
-        }
-        hasCanvasOpenedForCurrentMessage.value = false
-        hasEmailRenderedForCurrentMessage.value = false
-        hasLandingPageRenderedForCurrentMessage.value = false
-    })
-
-    // Close canvas when chat data changes (new chat created)
-    watch(() => chat.value?.id, () => {
-        if (isCanvasVisible.value) {
-            hideCanvas()
-        }
-        hasCanvasOpenedForCurrentMessage.value = false
-        hasEmailRenderedForCurrentMessage.value = false
-        hasLandingPageRenderedForCurrentMessage.value = false
-    })
-
-    // Watch streaming progress and last message parts to detect the UI signal in near real-time
+    // UNIFIED WATCH: Reset flags and close canvas on context changes
     watch(
         () => ({
-            s: status.value,
-            lastId: messages.value[messages.value.length - 1]?.id,
-            lastRole: messages.value[messages.value.length - 1]?.role,
-            lastParts: messages.value[messages.value.length - 1]?.parts?.length
+            messageId: messages.value[messages.value.length - 1]?.id,
+            routeId: route.params.id,
+            chatId: chat.value?.id
         }),
-        () => {
-            const last = messages.value[messages.value.length - 1]
-            if (!last || last.role !== 'assistant') return
-            if (status.value === 'streaming') {
-                maybeProcessUiSignals(last)
+        (current, previous) => {
+            // Reset flags when message changes
+            if (current.messageId !== previous?.messageId) {
+                resetCanvasFlags()
             }
-        },
-        { deep: true }
+
+            // Close canvas and reset when chat/route changes
+            if (current.routeId !== previous?.routeId || current.chatId !== previous?.chatId) {
+                if (isCanvasVisible.value) {
+                    hideCanvas()
+                }
+                resetCanvasFlags()
+            }
+        }
     )
+
+    // NOTE: Streaming watch removed - now handled in [id].vue unified watcher
 
     return {
         hasCanvasOpenedForCurrentMessage,
@@ -201,7 +239,9 @@ export const useCanvasTriggers = (
         openCanvasWithEmail,
         openCanvasWithLandingPage,
         checkAndTriggerCanvas,
-        maybeProcessUiSignals
+        maybeProcessUiSignals,
+        // MASTRA V1: New stream event handler
+        handleDataEvent
     }
 }
 

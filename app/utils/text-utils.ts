@@ -34,6 +34,7 @@ export function parseAIMessage(message: any): string {
 }
 
 // Helper: extract reasoning/thinking text if present in message parts
+// Supports both legacy format (reasoning-start/delta/end) and MASTRA V1 format (data-reasoning)
 export function parseAIReasoning(message: any): string {
     if (!message) {
         return ''
@@ -46,8 +47,11 @@ export function parseAIReasoning(message: any): string {
 
     const isReasoningPart = (p: any) => {
         if (!p || typeof p !== 'object') return false
+        // Legacy format
         if (p.type === 'reasoning') return true
         if (p.type === 'reasoning-start' || p.type === 'reasoning-delta' || p.type === 'reasoning-end') return true
+        // MASTRA V1 format: data-reasoning events
+        if (p.type === 'data-reasoning') return true
         // Provider fallbacks
         if (p.channel === 'reasoning') return true
         if (p.name === 'reasoning') return true
@@ -57,9 +61,24 @@ export function parseAIReasoning(message: any): string {
         return false
     }
 
+    const getReasoningText = (p: any): string => {
+        if (typeof p === 'string') return p
+
+        // MASTRA V1 format: data-reasoning with nested data object
+        if (p.type === 'data-reasoning' && p.data) {
+            const { event, text } = p.data
+            // Only return text for delta events
+            if (event === 'delta' && text) return text
+            return ''
+        }
+
+        // Legacy format
+        return p?.delta ?? p?.text ?? ''
+    }
+
     const reasoningText = message.parts
         .filter((p: any) => isReasoningPart(p))
-        .map((p: any) => (typeof p === 'string' ? p : p?.delta ?? p?.text ?? ''))
+        .map((p: any) => getReasoningText(p))
         .join('')
 
     return reasoningText
