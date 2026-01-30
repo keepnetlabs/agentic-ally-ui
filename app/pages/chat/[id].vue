@@ -293,6 +293,7 @@ watch(chat, (value) => {
 const status = createStatus(chatClient)
 const error = createErrorComputed(chatClient)
 const lastFinishedMessageId = ref<string | null>(null)
+const promptStatus = computed(() => (error.value ? 'error' : status.value))
 
 const handleSubmit = createHandleSubmit(chatClient, input, messages, status, lastFinishedMessageId)
 
@@ -542,7 +543,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                 @submit="handlePromptSubmit"
               >
                 <UChatPromptSubmit
-                  :status="status"
+                  :status="promptStatus"
                   color="info"
                   :ui="{ 
                     base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
