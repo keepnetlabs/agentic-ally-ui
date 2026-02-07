@@ -1,7 +1,7 @@
 import { ref, nextTick, watch } from 'vue'
-import { base64ToUtf8, getAllStreamText, extractTrainingUrlFromMessage, extractLandingPageFromMessage } from '../utils/message-utils'
+import { base64ToUtf8, getAllStreamText, extractTrainingUrlFromMessage, extractLandingPageFromMessage, extractSmishingLandingPageFromMessage } from '../utils/message-utils'
 import { parseAIMessage } from '../utils/text-utils'
-import { useStreamEvents, type PhishingEmailPayload, type LandingPagePayload } from './useStreamEvents'
+import { useStreamEvents, type PhishingEmailPayload, type LandingPagePayload, type SmishingSmsPayload, type SmishingLandingPagePayload } from './useStreamEvents'
 
 export const useCanvasTriggers = (
     canvasRef: any,
@@ -16,6 +16,8 @@ export const useCanvasTriggers = (
     const hasCanvasOpenedForCurrentMessage = ref(false)
     const hasEmailRenderedForCurrentMessage = ref(false)
     const hasLandingPageRenderedForCurrentMessage = ref(false)
+    const hasSmishingRenderedForCurrentMessage = ref(false)
+    const hasSmishingLandingPageRenderedForCurrentMessage = ref(false)
 
     // =====================================
     // MASTRA V1: Stream Event Handlers
@@ -32,6 +34,7 @@ export const useCanvasTriggers = (
     let openCanvasWithUrlFn: (url: string, title?: string) => Promise<void>
     let openCanvasWithEmailFn: (emailData: any, messageId?: string) => Promise<void>
     let openCanvasWithLandingPageFn: (landingPage: any, messageId?: string) => Promise<void>
+    let openCanvasWithSmsFn: (smsData: any, messageId?: string) => Promise<void>
 
     // Initialize stream event handlers with lazy binding
     const streamEventHandlers = {
@@ -43,6 +46,16 @@ export const useCanvasTriggers = (
         onLandingPage: (payload: LandingPagePayload) => {
             if (hasLandingPageRenderedForCurrentMessage.value) return
             hasLandingPageRenderedForCurrentMessage.value = true
+            openCanvasWithLandingPageFn(payload, getCurrentMessageId())
+        },
+        onSmishingSms: (payload: SmishingSmsPayload) => {
+            if (hasSmishingRenderedForCurrentMessage.value) return
+            hasSmishingRenderedForCurrentMessage.value = true
+            openCanvasWithSmsFn(payload, getCurrentMessageId())
+        },
+        onSmishingLandingPage: (payload: SmishingLandingPagePayload) => {
+            if (hasSmishingLandingPageRenderedForCurrentMessage.value) return
+            hasSmishingLandingPageRenderedForCurrentMessage.value = true
             openCanvasWithLandingPageFn(payload, getCurrentMessageId())
         },
         onCanvasOpen: (url: string) => {
@@ -133,10 +146,31 @@ export const useCanvasTriggers = (
         })
     }
 
+    const openCanvasWithSms = async (smsData: { template: string; fromNumber?: string; fromName?: string } | string, messageId?: string) => {
+        const isString = typeof smsData === 'string'
+        const template = isString ? smsData : smsData.template
+
+        if (!template) return
+        if (!isCanvasVisible.value) {
+            toggleCanvas()
+            await nextTick()
+        }
+        await nextTick()
+
+        canvasRef.value?.updateContent({
+            type: 'smishing-sms',
+            smsTemplate: template,
+            smsData: isString ? { template } : smsData,
+            messageId: messageId,
+            chatId: route.params.id as string
+        })
+    }
+
     // Bind forward references now that functions are defined
     openCanvasWithUrlFn = openCanvasWithUrl
     openCanvasWithEmailFn = openCanvasWithEmail
     openCanvasWithLandingPageFn = openCanvasWithLandingPage
+    openCanvasWithSmsFn = openCanvasWithSms
 
     const checkAndTriggerCanvas = (message: any) => {
         const content = message.content || parseAIMessage(message)
@@ -197,6 +231,30 @@ export const useCanvasTriggers = (
                 openCanvasWithLandingPage(landingPage, message.id)
             }
         }
+
+        // Check for smishing SMS signal
+        if (!hasSmishingRenderedForCurrentMessage.value) {
+            const smsMatch = allText.match(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/)
+            if (smsMatch && smsMatch[1]) {
+                try {
+                    const decoded = base64ToUtf8(smsMatch[1].trim())
+                    const smsObj = JSON.parse(decoded)
+                    hasSmishingRenderedForCurrentMessage.value = true
+                    openCanvasWithSms(smsObj, message.id)
+                } catch (error) {
+                    console.error('Failed to decode base64 smishing sms in stream:', error)
+                }
+            }
+        }
+
+        // Check for smishing landing page signal
+        if (!hasSmishingLandingPageRenderedForCurrentMessage.value) {
+            const smishingLandingPage = extractSmishingLandingPageFromMessage(message)
+            if (smishingLandingPage) {
+                hasSmishingLandingPageRenderedForCurrentMessage.value = true
+                openCanvasWithLandingPage(smishingLandingPage, message.id)
+            }
+        }
     }
 
     // Helper to reset all canvas flags
@@ -204,6 +262,8 @@ export const useCanvasTriggers = (
         hasCanvasOpenedForCurrentMessage.value = false
         hasEmailRenderedForCurrentMessage.value = false
         hasLandingPageRenderedForCurrentMessage.value = false
+        hasSmishingRenderedForCurrentMessage.value = false
+        hasSmishingLandingPageRenderedForCurrentMessage.value = false
     }
 
     // UNIFIED WATCH: Reset flags and close canvas on context changes

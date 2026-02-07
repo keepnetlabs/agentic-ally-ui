@@ -9,8 +9,12 @@ export type UISignalType =
   | 'training_assigned'
   | 'training_uploaded'
   | 'phishing_uploaded'
+  | 'smishing_assigned'
+  | 'smishing_uploaded'
+  | 'smishing_sms'
   | 'phishing_email'
   | 'landing_page'
+  | 'smishing_landing_page'
   | 'target_user'
   | 'target_group'
   | 'canvas_open'
@@ -76,6 +80,29 @@ export interface LandingPagePayload {
   isQuishing: boolean
 }
 
+export interface SmishingSmsPayload {
+  smishingId: string
+  smsKey: string
+  language: string
+  template: string
+  fromNumber?: string
+  fromName?: string
+  method?: 'Click-Only' | 'Data-Submission'
+  isQuishing: boolean
+}
+
+export interface SmishingLandingPagePayload {
+  smishingId: string
+  landingKey: string
+  language: string
+  name?: string
+  description?: string
+  method?: string
+  difficulty?: string
+  pages: Array<{ html: string; step: number }>
+  isQuishing: boolean
+}
+
 export interface TargetUserPayload {
   targetUserResourceId: string
   fullName: string
@@ -97,6 +124,8 @@ export interface StreamEventHandlers {
   onUISignal?: (signal: UISignalType, payload: unknown) => void
   onPhishingEmail?: (payload: PhishingEmailPayload) => void
   onLandingPage?: (payload: LandingPagePayload) => void
+  onSmishingSms?: (payload: SmishingSmsPayload) => void
+  onSmishingLandingPage?: (payload: SmishingLandingPagePayload) => void
   onTargetUser?: (payload: TargetUserPayload) => void
   onTargetGroup?: (payload: TargetGroupPayload) => void
   onCanvasOpen?: (url: string) => void
@@ -172,6 +201,14 @@ export const useStreamEvents = (handlers: StreamEventHandlers = {}) => {
 
         case 'landing_page':
           if (payload) handlers.onLandingPage?.(payload as LandingPagePayload)
+          break
+
+        case 'smishing_sms':
+          if (payload) handlers.onSmishingSms?.(payload as SmishingSmsPayload)
+          break
+
+        case 'smishing_landing_page':
+          if (payload) handlers.onSmishingLandingPage?.(payload as SmishingLandingPagePayload)
           break
 
         case 'target_user':

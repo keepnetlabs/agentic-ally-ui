@@ -179,7 +179,57 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
         .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
-        .replace(/::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
+        .replace(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/g, '')
+        .replace(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/g, '')
+        .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
+}
+
+// Extract smishing landing page from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:smishing_landing_page::) formats
+export function extractSmishingLandingPageFromMessage(msg: any): any | null {
+    // 1️⃣ MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const landingSignal = msg.uiSignals.find((s: any) => s.signal === 'smishing_landing_page')
+        if (landingSignal?.message) {
+            try {
+                const match = landingSignal.message.match(/::ui:smishing_landing_page::([^:]+)::/)
+                if (match?.[1]) {
+                    return JSON.parse(base64ToUtf8(match[1].trim()))
+                }
+            } catch (error) {
+                console.error('Failed to parse smishing_landing_page from uiSignals:', error)
+            }
+        }
+    }
+
+    // 2️⃣ Legacy: Helper function to decode base64 and extract landing page
+    const extractAndDecode = (text: string): any | null => {
+        // Match: ::ui:smishing_landing_page::<base64>::/ui:smishing_landing_page::
+        const match = text.match(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/)
+        if (!match || !match[1]) return null
+
+        try {
+            // Decode base64 to get JSON string with UTF-8 support
+            const decoded = base64ToUtf8(match[1].trim())
+            // Parse JSON to get LandingPage object
+            return JSON.parse(decoded)
+        } catch (error) {
+            console.error('Failed to decode base64 smishing landing page:', error)
+            return null
+        }
+    }
+
+    // Check parts first (streaming)
+    const parts = extractTextPartsForTemplate(msg)
+    for (const p of parts) {
+        const text = p?.delta || p?.text || ''
+        const landingPage = extractAndDecode(text)
+        if (landingPage) return landingPage
+    }
+
+    // Fallback: check final content
+    const content = (msg?.content || '') + ''
+    return extractAndDecode(content)
 }
 
 export function getSanitizedTitle(rawTitle: string): string {
@@ -189,7 +239,9 @@ export function getSanitizedTitle(rawTitle: string): string {
         .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
         .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
-        .replace(/::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
+        .replace(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/g, '')
+        .replace(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/g, '')
+        .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
         .replace(/::ui:target_user::[^\n]*/g, '')
         .replace(/::\/ui:target_user::/g, '')
         .replace(/^[A-Za-z0-9+/]{20,}={0,2}$/gm, '')

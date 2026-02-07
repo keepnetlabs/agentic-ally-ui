@@ -176,7 +176,7 @@ defineShortcuts({
 </script>
 
 <template>
-  <UDashboardGroup unit="rem">
+  <UDashboardGroup unit="rem" storage="localStorage" storage-key="dashboard-v2">
     <UDashboardSidebar
       id="default"
       v-model:open="open"

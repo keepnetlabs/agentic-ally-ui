@@ -35,6 +35,16 @@
           @edit="openHTMLEditor('email')"
         />
 
+        <!-- Smishing Template -->
+        <SmishingTemplateCanvas
+          v-else-if="content.type === 'smishing-sms'"
+          :template="content.smsTemplate || ''"
+          :message-id="content.messageId"
+          :chat-id="content.chatId"
+          @close="$emit('close')"
+          @save="handleSmishingSave"
+        />
+
         <!-- Code Preview -->
         <div v-else-if="content.type === 'code'" class="space-y-4">
           <div class="bg-gray-900 rounded-lg overflow-hidden">
@@ -230,7 +240,7 @@ import { useSecureApi } from '../composables/useSecureApi'
 import type { LandingPage, ServerMessage } from '../types/chat'
 
 interface CanvasContent {
-  type: 'preview' | 'email' | 'code' | 'html' | 'markdown' | 'url' | 'landing-page'
+  type: 'preview' | 'email' | 'smishing-sms' | 'code' | 'html' | 'markdown' | 'url' | 'landing-page'
   title?: string
   content?: string
   html?: string
@@ -245,6 +255,8 @@ interface CanvasContent {
   messageId?: string
   chatId?: string
   emailData?: { template: string; fromAddress?: string; fromName?: string; subject?: string }
+  smsTemplate?: string
+  smsData?: { template: string; fromNumber?: string; fromName?: string }
 }
 
 const emit = defineEmits<{
@@ -504,6 +516,54 @@ const handleEditorSave = async (newHtml: string) => {
 
   showHTMLEditor.value = false
   editingContent.value = null
+}
+
+const handleSmishingSave = async (newTemplate: string) => {
+  if (!content.value) return
+
+  const messageId = content.value.messageId
+  const chatId = content.value.chatId
+  const smsData = content.value.smsData
+
+  if (!messageId || !chatId || !smsData) {
+    return
+  }
+
+  try {
+    const currentMessageUrl = buildUrl(`/api/chats/${chatId}/messages/${messageId}`)
+    const currentMessage = await secureFetch<ServerMessage>(currentMessageUrl)
+    let fullContent = currentMessage?.content || ''
+
+    const updatedSmsData = {
+      ...smsData,
+      template: newTemplate
+    }
+
+    const smsJson = JSON.stringify(updatedSmsData)
+    const base64Sms = btoa(unescape(encodeURIComponent(smsJson)))
+    const newSmsWrapper = `::ui:smishing_sms::${base64Sms}::/ui:smishing_sms::`
+
+    if (fullContent.includes('::ui:smishing_sms::')) {
+      fullContent = fullContent.replace(
+        /::ui:smishing_sms::[\s\S]+?::\/ui:smishing_sms::/g,
+        newSmsWrapper
+      )
+    } else {
+      fullContent += '\n' + newSmsWrapper
+    }
+
+    const updateMessageUrl = buildUrl(`/api/chats/${chatId}/messages/${messageId}`)
+    await secureFetch(updateMessageUrl, {
+      method: 'PUT',
+      body: {
+        content: fullContent
+      }
+    })
+
+    emit('refresh', messageId, fullContent)
+  } catch (error) {
+    console.error('Failed to save smishing template:', error)
+  }
 }
 
 const handleEditorClose = () => {
