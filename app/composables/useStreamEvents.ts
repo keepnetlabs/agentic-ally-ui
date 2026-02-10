@@ -15,6 +15,8 @@ export type UISignalType =
   | 'phishing_email'
   | 'landing_page'
   | 'smishing_landing_page'
+  | 'vishing_call_started'
+  | 'vishing_call_transcript'
   | 'target_user'
   | 'target_group'
   | 'canvas_open'
@@ -116,6 +118,23 @@ export interface TargetGroupPayload {
   memberCount: number
 }
 
+export interface StreamVishingCallStartedPayload {
+  conversationId: string
+  callSid: string
+  status: string
+}
+
+export interface StreamVishingCallTranscriptPayload {
+  conversationId: string
+  status: string
+  callDurationSecs: number
+  transcript: Array<{
+    role: 'agent' | 'user'
+    message: string
+    timestamp: number
+  }>
+}
+
 // =====================================
 // Stream Event Handlers
 // =====================================
@@ -128,6 +147,8 @@ export interface StreamEventHandlers {
   onSmishingLandingPage?: (payload: SmishingLandingPagePayload) => void
   onTargetUser?: (payload: TargetUserPayload) => void
   onTargetGroup?: (payload: TargetGroupPayload) => void
+  onVishingCallStarted?: (payload: StreamVishingCallStartedPayload) => void
+  onVishingCallTranscript?: (payload: StreamVishingCallTranscriptPayload) => void
   onCanvasOpen?: (url: string) => void
   onReasoningStart?: (id: string) => void
   onReasoningDelta?: (id: string, text: string) => void
@@ -217,6 +238,14 @@ export const useStreamEvents = (handlers: StreamEventHandlers = {}) => {
 
         case 'target_group':
           if (payload) handlers.onTargetGroup?.(payload as TargetGroupPayload)
+          break
+
+        case 'vishing_call_started':
+          if (payload) handlers.onVishingCallStarted?.(payload as StreamVishingCallStartedPayload)
+          break
+
+        case 'vishing_call_transcript':
+          if (payload) handlers.onVishingCallTranscript?.(payload as StreamVishingCallTranscriptPayload)
           break
 
         case 'canvas_open':

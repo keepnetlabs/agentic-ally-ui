@@ -171,6 +171,109 @@ export function extractAllPhishingEmailsFromMessage(msg: any): any[] {
     })
 }
 
+export interface VishingCallStartedPayload {
+    conversationId: string
+    callSid: string
+    status: string
+}
+
+export interface VishingTranscriptEntry {
+    role: 'agent' | 'user'
+    message: string
+    timestamp: number
+}
+
+export interface VishingCallTranscriptPayload {
+    conversationId: string
+    status: string
+    callDurationSecs: number
+    transcript: VishingTranscriptEntry[]
+}
+
+// Extract vishing call started signal from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:vishing_call_started::) formats
+export function extractVishingCallStartedFromMessage(msg: any): VishingCallStartedPayload | null {
+    // 1) MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const startedSignal = msg.uiSignals.find((s: any) => s.signal === 'vishing_call_started')
+        if (startedSignal?.message) {
+            try {
+                const match = startedSignal.message.match(/::ui:vishing_call_started::([^:]+)::/)
+                if (match?.[1]) {
+                    return JSON.parse(base64ToUtf8(match[1].trim()))
+                }
+            } catch (error) {
+                console.error('Failed to parse vishing_call_started from uiSignals:', error)
+            }
+        }
+    }
+
+    // 2) Legacy: Check stream parts and fallback content
+    const extractAndDecode = (text: string): VishingCallStartedPayload | null => {
+        const match = text.match(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/)
+        if (!match || !match[1]) return null
+
+        try {
+            return JSON.parse(base64ToUtf8(match[1].trim()))
+        } catch (error) {
+            console.error('Failed to decode base64 vishing_call_started:', error)
+            return null
+        }
+    }
+
+    const parts = extractTextPartsForTemplate(msg)
+    for (const p of parts) {
+        const text = p?.delta || p?.text || ''
+        const started = extractAndDecode(text)
+        if (started) return started
+    }
+
+    const content = (msg?.content || '') + ''
+    return extractAndDecode(content)
+}
+
+// Extract vishing transcript signal from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:vishing_call_transcript::) formats
+export function extractVishingCallTranscriptFromMessage(msg: any): VishingCallTranscriptPayload | null {
+    // 1) MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const transcriptSignal = msg.uiSignals.find((s: any) => s.signal === 'vishing_call_transcript')
+        if (transcriptSignal?.message) {
+            try {
+                const match = transcriptSignal.message.match(/::ui:vishing_call_transcript::([^:]+)::/)
+                if (match?.[1]) {
+                    return JSON.parse(base64ToUtf8(match[1].trim()))
+                }
+            } catch (error) {
+                console.error('Failed to parse vishing_call_transcript from uiSignals:', error)
+            }
+        }
+    }
+
+    // 2) Legacy: Check stream parts and fallback content
+    const extractAndDecode = (text: string): VishingCallTranscriptPayload | null => {
+        const match = text.match(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/)
+        if (!match || !match[1]) return null
+
+        try {
+            return JSON.parse(base64ToUtf8(match[1].trim()))
+        } catch (error) {
+            console.error('Failed to decode base64 vishing_call_transcript:', error)
+            return null
+        }
+    }
+
+    const parts = extractTextPartsForTemplate(msg)
+    for (const p of parts) {
+        const text = p?.delta || p?.text || ''
+        const transcript = extractAndDecode(text)
+        if (transcript) return transcript
+    }
+
+    const content = (msg?.content || '') + ''
+    return extractAndDecode(content)
+}
+
 // Get sanitized content for template (remove UI signals)
 export function getSanitizedContentForTemplate(msg: any): string {
     const content = (msg?.content || '') + ''
@@ -181,6 +284,8 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
         .replace(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/g, '')
         .replace(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/g, '')
+        .replace(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/g, '')
+        .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
 }
 
@@ -241,6 +346,8 @@ export function getSanitizedTitle(rawTitle: string): string {
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
         .replace(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/g, '')
         .replace(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/g, '')
+        .replace(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/g, '')
+        .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
         .replace(/::ui:target_user::[^\n]*/g, '')
         .replace(/::\/ui:target_user::/g, '')
