@@ -128,6 +128,8 @@ export interface StreamVishingCallTranscriptPayload {
   conversationId: string
   status: string
   callDurationSecs: number
+  hasAudio?: boolean
+  recordingUrl?: string
   transcript: Array<{
     role: 'agent' | 'user'
     message: string

@@ -363,8 +363,8 @@ watch(
 const copied = ref(false)
 const canvasRef = ref()
 const openCanvasType = ref<'email' | 'landing-page' | null>(null)
-const VISHING_POLL_INTERVAL_MS = 3000
-const VISHING_POLL_TIMEOUT_MS = 120000
+const VISHING_POLL_INTERVAL_MS = 1000
+const VISHING_POLL_TIMEOUT_MS = 600000
 
 const vishingPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
 const vishingPollingStartedAt = new Map<string, number>()
@@ -385,6 +385,20 @@ type VishingStatusResponse = {
   conversationId: string
   status: string
   callDurationSecs: number
+  hasAudio?: boolean
+  has_audio?: boolean
+  recordingUrl?: string
+  recording_url?: string
+  audioUrl?: string
+  audio_url?: string
+  metadata?: {
+    hasAudio?: boolean
+    has_audio?: boolean
+    recordingUrl?: string
+    recording_url?: string
+    audioUrl?: string
+    audio_url?: string
+  }
   transcript: Array<{
     role: 'agent' | 'user'
     message: string
@@ -418,6 +432,22 @@ const normalizeVishingResponse = (
   conversationId: string,
   response: Partial<VishingStatusResponse>
 ): VishingCallTranscriptPayload => {
+  const hasAudio = response.hasAudio
+    ?? response.has_audio
+    ?? response.metadata?.hasAudio
+    ?? response.metadata?.has_audio
+    ?? false
+
+  const recordingUrl = response.recordingUrl
+    || response.recording_url
+    || response.audioUrl
+    || response.audio_url
+    || response.metadata?.recordingUrl
+    || response.metadata?.recording_url
+    || response.metadata?.audioUrl
+    || response.metadata?.audio_url
+    || undefined
+
   const transcript = Array.isArray(response.transcript)
     ? response.transcript.map((item) => ({
       role: item.role === 'agent' ? 'agent' : 'user',
@@ -430,6 +460,8 @@ const normalizeVishingResponse = (
     conversationId,
     status: response.status || 'initiated',
     callDurationSecs: Number(response.callDurationSecs || 0),
+    hasAudio: Boolean(hasAudio),
+    recordingUrl: typeof recordingUrl === 'string' && recordingUrl.length > 0 ? recordingUrl : undefined,
     transcript
   }
 }
@@ -478,6 +510,8 @@ const pollVishingConversation = async (conversationId: string) => {
       conversationId,
       status: 'timeout',
       callDurationSecs: existing?.callDurationSecs || 0,
+      hasAudio: existing?.hasAudio,
+      recordingUrl: existing?.recordingUrl,
       transcript: existing?.transcript || []
     })
     stopVishingPolling(conversationId)
@@ -488,7 +522,7 @@ const pollVishingConversation = async (conversationId: string) => {
   try {
     const statusUrlBase = buildUrl(`/api/vishing/status/${encodeURIComponent(conversationId)}`)
     const separator = statusUrlBase.includes('?') ? '&' : '?'
-    const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}`
+    const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}&_t=${Date.now()}`
     console.log('[vishing-ui] poll request', { chatId, conversationId, statusUrl })
     const response = await secureFetch<VishingStatusResponse>(statusUrl)
     const normalized = normalizeVishingResponse(conversationId, response)
@@ -496,10 +530,19 @@ const pollVishingConversation = async (conversationId: string) => {
       chatId,
       conversationId,
       status: normalized.status,
+      hasAudio: normalized.hasAudio,
+      hasRecordingUrl: Boolean(normalized.recordingUrl),
       transcriptLength: normalized.transcript.length,
       callDurationSecs: normalized.callDurationSecs
     })
     setVishingTranscriptForConversation(conversationId, normalized)
+    const previousLength = existing?.transcript?.length || 0
+    if (!isTerminalVishingStatus(normalized.status) && normalized.transcript.length > previousLength) {
+      // Pull once more quickly after new live transcript chunks for snappier UI.
+      setTimeout(() => {
+        pollVishingConversation(conversationId)
+      }, 250)
+    }
     if (isTerminalVishingStatus(normalized.status)) {
       stopVishingPolling(conversationId)
     }
@@ -510,6 +553,8 @@ const pollVishingConversation = async (conversationId: string) => {
         conversationId,
         status: 'failed',
         callDurationSecs: existing?.callDurationSecs || 0,
+        hasAudio: existing?.hasAudio,
+        recordingUrl: existing?.recordingUrl,
         transcript: existing?.transcript || []
       })
       console.warn('[vishing-ui] poll failed with terminal status code', {
@@ -586,6 +631,7 @@ const processVishingStartedSignal = (message: any) => {
       conversationId: started.conversationId,
       status: started.status || 'ringing',
       callDurationSecs: 0,
+      hasAudio: false,
       transcript: []
     })
   }

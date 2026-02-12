@@ -187,6 +187,8 @@ export interface VishingCallTranscriptPayload {
     conversationId: string
     status: string
     callDurationSecs: number
+    recordingUrl?: string
+    hasAudio?: boolean
     transcript: VishingTranscriptEntry[]
 }
 

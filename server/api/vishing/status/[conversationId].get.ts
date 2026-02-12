@@ -11,8 +11,26 @@ type ElevenLabsTranscriptEntry = {
 
 type ElevenLabsConversationResponse = {
   status?: string
+  hasAudio?: boolean
+  has_audio?: boolean
+  recordingUrl?: string
+  recording_url?: string
+  audioUrl?: string
+  audio_url?: string
   metadata?: {
     call_duration_secs?: number
+    hasAudio?: boolean
+    has_audio?: boolean
+    recordingUrl?: string
+    recording_url?: string
+    audioUrl?: string
+    audio_url?: string
+  }
+  media?: {
+    recordingUrl?: string
+    recording_url?: string
+    audioUrl?: string
+    audio_url?: string
   }
   transcript?: ElevenLabsTranscriptEntry[]
 }
@@ -132,6 +150,26 @@ export default defineEventHandler(async (event) => {
   }
 
   const data = await response.json() as ElevenLabsConversationResponse
+  const hasAudio = data.hasAudio
+    ?? data.has_audio
+    ?? data.metadata?.hasAudio
+    ?? data.metadata?.has_audio
+    ?? false
+
+  const recordingUrl = data.recordingUrl
+    || data.recording_url
+    || data.audioUrl
+    || data.audio_url
+    || data.metadata?.recordingUrl
+    || data.metadata?.recording_url
+    || data.metadata?.audioUrl
+    || data.metadata?.audio_url
+    || data.media?.recordingUrl
+    || data.media?.recording_url
+    || data.media?.audioUrl
+    || data.media?.audio_url
+    || ''
+
   const transcript = Array.isArray(data.transcript)
     ? data.transcript.map((item) => ({
       role: item.role === 'agent' ? 'agent' : 'user',
@@ -145,13 +183,17 @@ export default defineEventHandler(async (event) => {
     conversationId,
     status: data.status || 'initiated',
     transcriptLength: transcript.length,
-    callDurationSecs: Number(data.metadata?.call_duration_secs || 0)
+    callDurationSecs: Number(data.metadata?.call_duration_secs || 0),
+    hasAudio: Boolean(hasAudio),
+    hasRecordingUrl: Boolean(recordingUrl)
   })
 
   return {
     conversationId,
     status: data.status || 'initiated',
     callDurationSecs: Number(data.metadata?.call_duration_secs || 0),
+    hasAudio: Boolean(hasAudio),
+    recordingUrl: recordingUrl || undefined,
     transcript
   }
 })
