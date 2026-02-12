@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { VishingCallStartedPayload, VishingCallTranscriptPayload } from '../utils/message-utils'
+import type {
+  VishingCallStartedPayload,
+  VishingCallTranscriptPayload,
+  VishingConversationSummaryPayload
+} from '../utils/message-utils'
 
 const props = defineProps<{
   started: VishingCallStartedPayload | null
   transcript: VishingCallTranscriptPayload | null
+  summary: VishingConversationSummaryPayload | null
 }>()
 
 const callStatus = computed(() => {
@@ -65,7 +70,7 @@ const audioLoadError = ref(false)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const progressTrackRef = ref<HTMLDivElement | null>(null)
 const isMinimized = ref(false)
-const isTranscriptOpen = ref(true)
+const activeTab = ref<'summary' | 'transcript' | 'next-steps'>('summary')
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -89,37 +94,6 @@ const resolvedAudioSrc = computed(() => {
   if (!proxiedAudioSrc.value) return ''
   const separator = proxiedAudioSrc.value.includes('?') ? '&' : '?'
   return `${proxiedAudioSrc.value}${separator}_t=${audioRetryTick.value}`
-})
-
-const cardStateKey = computed(() => {
-  return `vishing-card-state:${conversationId.value || 'unknown'}`
-})
-
-watch(cardStateKey, (key) => {
-  if (typeof window === 'undefined') return
-  if (!conversationId.value) {
-    isTranscriptOpen.value = true
-    return
-  }
-  const raw = window.localStorage.getItem(key)
-  if (!raw) {
-    isTranscriptOpen.value = true
-    return
-  }
-  try {
-    const parsed = JSON.parse(raw)
-    isTranscriptOpen.value = parsed?.isTranscriptOpen !== false
-  } catch {
-    isTranscriptOpen.value = true
-  }
-}, { immediate: true })
-
-watch([isTranscriptOpen, cardStateKey], ([transcriptOpen, key]) => {
-  if (typeof window === 'undefined') return
-  if (!conversationId.value) return
-  window.localStorage.setItem(key, JSON.stringify({
-    isTranscriptOpen: Boolean(transcriptOpen)
-  }))
 })
 
 const toggleAudio = async () => {
@@ -155,12 +129,6 @@ const seekTo = (event: MouseEvent) => {
   const next = total * ratio
   audioRef.value.currentTime = next
   currentTime.value = next
-}
-
-const onTranscriptToggle = (event: Event) => {
-  const details = event.currentTarget as HTMLDetailsElement | null
-  if (!details) return
-  isTranscriptOpen.value = details.open
 }
 
 const onAudioError = () => {
@@ -207,6 +175,54 @@ const waveBarStyle = (idx: number, height: number) => {
     animationDelay: `${idx * 38}ms`
   }
 }
+
+const statusCardUi = computed(() => {
+  const card = props.summary?.statusCard
+  if (!card?.title && !card?.description) return null
+
+  const variant = (card.variant || '').toLowerCase()
+  if (variant === 'warning') {
+    return {
+      box: 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20',
+      title: 'text-red-600 dark:text-red-300',
+      desc: 'text-red-700 dark:text-red-200',
+      icon: 'i-lucide-triangle-alert',
+      iconWrap: 'bg-red-100 text-red-500 dark:bg-red-900/40 dark:text-red-300'
+    }
+  }
+  if (variant === 'success') {
+    return {
+      box: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20',
+      title: 'text-emerald-700 dark:text-emerald-300',
+      desc: 'text-emerald-700 dark:text-emerald-200',
+      icon: 'i-lucide-circle-check',
+      iconWrap: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300'
+    }
+  }
+  return {
+    box: 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/30',
+    title: 'text-slate-800 dark:text-slate-100',
+    desc: 'text-slate-600 dark:text-slate-300',
+    icon: 'i-lucide-info',
+    iconWrap: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+  }
+})
+
+const timelineLabelClass = (label?: string) => {
+  const key = (label || '').trim().toLowerCase()
+  if (key === 'introduction') return 'text-indigo-500 dark:text-indigo-300'
+  if (key === 'credibility building') return 'text-violet-500 dark:text-violet-300'
+  if (key === 'pressure') return 'text-rose-500 dark:text-rose-300'
+  if (key === 'data request') return 'text-amber-500 dark:text-amber-300'
+  if (key === 'data disclosed') return 'text-red-500 dark:text-red-300'
+  if (key === 'simulation reveal') return 'text-emerald-600 dark:text-emerald-300'
+  return 'text-slate-500 dark:text-slate-300'
+}
+
+watch(() => props.summary, (next) => {
+  if (!next) return
+  activeTab.value = 'summary'
+})
 </script>
 
 <template>
@@ -240,6 +256,26 @@ const waveBarStyle = (idx: number, height: number) => {
         v-if="isTerminalStatus && !isMinimized"
         class="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900 relative"
       >
+        <div
+          v-if="props.summary?.statusCard"
+          class="mb-3 rounded-xl border px-3 py-2"
+          :class="statusCardUi?.box"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" :class="statusCardUi?.iconWrap">
+              <UIcon :name="statusCardUi?.icon || 'i-lucide-info'" class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-lg font-semibold leading-tight" :class="statusCardUi?.title">
+                {{ props.summary?.statusCard?.title || 'Summary' }}
+              </p>
+              <p class="text-sm" :class="statusCardUi?.desc">
+                {{ props.summary?.statusCard?.description || '' }}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div class="flex items-center gap-4 text-slate-700 dark:text-slate-200">
           <button
             type="button"
@@ -289,23 +325,83 @@ const waveBarStyle = (idx: number, height: number) => {
           Audio yuklenemedi.
         </p>
       </div>
-      <details
-        v-if="isTerminalStatus && !isMinimized && transcript?.transcript?.length"
-        class="transcript-details mt-3 rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
-        :open="isTranscriptOpen"
-        @toggle="onTranscriptToggle"
-      >
-        <summary class="cursor-pointer list-none px-2.5 py-2 text-xs font-medium text-gray-700 dark:text-gray-200">
-          <div class="flex items-center justify-between">
-            <span>Transcript ({{ transcript?.transcript?.length || 0 }})</span>
-            <UIcon
-              name="i-lucide-chevron-down"
-              class="h-4 w-4 text-slate-500 transition-transform duration-200"
-              :class="isTranscriptOpen ? 'rotate-180' : ''"
-            />
+
+      <div v-if="isTerminalStatus && !isMinimized && props.summary" class="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div class="flex items-center gap-5 border-b border-gray-200 px-3 py-2 text-sm dark:border-gray-700">
+          <button
+            type="button"
+            class="pb-1 font-semibold transition-colors"
+            :class="activeTab === 'summary' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-slate-100'"
+            @click="activeTab = 'summary'"
+          >
+            Summary
+          </button>
+          <button
+            type="button"
+            class="pb-1 font-semibold transition-colors"
+            :class="activeTab === 'transcript' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-slate-100'"
+            @click="activeTab = 'transcript'"
+          >
+            Transcript
+          </button>
+          <button
+            type="button"
+            class="pb-1 font-semibold transition-colors"
+            :class="activeTab === 'next-steps' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-slate-100'"
+            @click="activeTab = 'next-steps'"
+          >
+            Next Steps
+          </button>
+        </div>
+
+        <div v-if="activeTab === 'summary'" class="space-y-3 px-3 py-3">
+          <p class="text-sm text-slate-700 dark:text-slate-200">
+            <span class="font-semibold text-slate-500 dark:text-slate-300">Total Time</span>
+            {{ formatMmSs(totalSeconds) }}
+          </p>
+          <div v-if="props.summary?.summary?.timeline?.length" class="space-y-2">
+            <p class="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-300">Simulation Timeline</p>
+            <div
+              v-for="(item, index) in props.summary?.summary?.timeline || []"
+              :key="index"
+              class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm dark:border-gray-700 dark:bg-gray-950"
+            >
+              <div class="grid grid-cols-[3.5rem_10rem_minmax(0,1fr)] items-start gap-2">
+                <span class="text-slate-400">{{ item.timestamp }}</span>
+                <span class="font-semibold" :class="timelineLabelClass(item.label)">{{ item.label }}</span>
+                <span class="text-slate-700 dark:text-slate-200">{{ item.snippet }}</span>
+              </div>
+            </div>
           </div>
-        </summary>
-        <div class="max-h-56 overflow-auto border-t border-gray-200 px-2.5 py-2 space-y-1.5 dark:border-gray-700">
+
+          <div v-if="props.summary?.summary?.disclosedInfo?.length" class="space-y-2">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-300">Disclosed Information</p>
+              <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                {{ props.summary?.summary?.disclosedInfo?.length || 0 }} {{ (props.summary?.summary?.disclosedInfo?.length || 0) === 1 ? 'item' : 'items' }}
+              </span>
+            </div>
+            <div class="space-y-2">
+              <div
+                v-for="(info, index) in props.summary?.summary?.disclosedInfo || []"
+                :key="index"
+                class="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50/70 px-2.5 py-2 dark:border-red-900/40 dark:bg-red-950/20"
+              >
+                <div class="min-w-0 flex items-center gap-2">
+                  <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white dark:bg-red-950/40">
+                    <UIcon name="i-lucide-triangle-alert" class="h-3.5 w-3.5 text-red-500 dark:text-red-300" />
+                  </span>
+                  <span class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{ info.item }}</span>
+                </div>
+                <span class="shrink-0 rounded border border-red-200 bg-white px-2 py-0.5 text-xs font-medium text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
+                  {{ info.timestamp }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="activeTab === 'transcript'" class="max-h-64 space-y-1.5 overflow-auto px-3 py-3">
           <div
             v-for="(entry, index) in (transcript?.transcript || [])"
             :key="index"
@@ -324,7 +420,65 @@ const waveBarStyle = (idx: number, height: number) => {
             </p>
           </div>
         </div>
-      </details>
+
+        <div v-if="activeTab === 'next-steps'" class="space-y-2 px-3 py-3">
+          <div
+            v-for="(step, index) in props.summary?.nextSteps || []"
+            :key="index"
+            class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-950"
+          >
+            <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ step.title }}</p>
+            <p class="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{{ step.description }}</p>
+          </div>
+          <p v-if="!(props.summary?.nextSteps?.length)" class="text-sm text-slate-500 dark:text-slate-300">
+            No next steps provided.
+          </p>
+        </div>
+      </div>
+
+      <div
+        v-if="isTerminalStatus && !isMinimized && !props.summary"
+        class="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+      >
+        <div class="flex items-start gap-2 px-3 py-3">
+          <UIcon name="i-lucide-loader-2" class="mt-0.5 h-4 w-4 animate-spin text-blue-500" />
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-slate-800 dark:text-slate-100">Analysis is being generated...</p>
+            <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-300">
+              Summary and next steps will appear here shortly.
+            </p>
+          </div>
+        </div>
+
+        <details
+          v-if="transcript?.transcript?.length"
+          class="border-t border-gray-200 dark:border-gray-700"
+          open
+        >
+          <summary class="cursor-pointer list-none px-2.5 py-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+            Transcript ({{ transcript?.transcript?.length || 0 }})
+          </summary>
+          <div class="max-h-56 overflow-auto border-t border-gray-200 px-2.5 py-2 space-y-1.5 dark:border-gray-700">
+            <div
+              v-for="(entry, index) in (transcript?.transcript || [])"
+              :key="index"
+              class="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-gray-800 dark:bg-gray-950"
+            >
+              <div class="flex items-center justify-between gap-2 text-[11px]">
+                <span class="font-semibold uppercase tracking-wide" :class="entry.role === 'agent' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'">
+                  {{ entry.role === 'agent' ? 'Agent' : 'User' }}
+                </span>
+                <span class="text-muted-foreground">
+                  {{ Number(entry.timestamp || 0).toFixed(1) }}s
+                </span>
+              </div>
+              <p class="mt-1 whitespace-pre-wrap text-xs text-gray-700 dark:text-gray-200">
+                {{ entry.message }}
+              </p>
+            </div>
+          </div>
+        </details>
+      </div>
     </div>
   </div>
 </template>
@@ -343,5 +497,4 @@ const waveBarStyle = (idx: number, height: number) => {
   50% { transform: scaleY(1.2); }
   100% { transform: scaleY(0.7); }
 }
-
 </style>

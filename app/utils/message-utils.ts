@@ -192,6 +192,41 @@ export interface VishingCallTranscriptPayload {
     transcript: VishingTranscriptEntry[]
 }
 
+export interface VishingSummaryTimelineItem {
+    timestamp: string
+    label: string
+    snippet: string
+}
+
+export interface VishingDisclosedInfoItem {
+    item: string
+    timestamp: string
+}
+
+export interface VishingSummaryData {
+    timeline: VishingSummaryTimelineItem[]
+    timeToDisclosure?: string
+    disclosedInfo?: VishingDisclosedInfoItem[]
+    outcome?: string
+}
+
+export interface VishingNextStepItem {
+    title: string
+    description: string
+}
+
+export interface VishingStatusCard {
+    variant?: string
+    title?: string
+    description?: string
+}
+
+export interface VishingConversationSummaryPayload {
+    summary?: VishingSummaryData
+    nextSteps?: VishingNextStepItem[]
+    statusCard?: VishingStatusCard
+}
+
 // Extract vishing call started signal from message
 // Supports both MASTRA V1 (uiSignals) and legacy (::ui:vishing_call_started::) formats
 export function extractVishingCallStartedFromMessage(msg: any): VishingCallStartedPayload | null {

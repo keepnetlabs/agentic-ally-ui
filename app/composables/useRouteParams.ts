@@ -8,15 +8,15 @@ export const useRouteParams = () => {
   const sessionId = computed(() => route.query.sessionId as string)
   const accessToken = computed(() => route.query.accessToken as string)
   const baseApiUrl = computed(() => {
-    const value = route.query.baseApiUrl as string
-    if (value) {
-      return value
-    }
     if (process.client) {
       const hostname = window.location.hostname
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
         return 'http://localhost:4111'
       }
+    }
+    const value = route.query.baseApiUrl as string
+    if (value) {
+      return value
     }
     return ''
   })

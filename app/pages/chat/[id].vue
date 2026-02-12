@@ -24,6 +24,7 @@ import {
   extractVishingCallTranscriptFromMessage,
   type VishingCallStartedPayload,
   type VishingCallTranscriptPayload,
+  type VishingConversationSummaryPayload,
   getSanitizedContentForTemplate,
   getAllStreamText,
   showInCanvas as showInCanvasUtil
@@ -369,8 +370,12 @@ const VISHING_POLL_TIMEOUT_MS = 600000
 const vishingPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
 const vishingPollingStartedAt = new Map<string, number>()
 const vishingPollingInFlight = new Set<string>()
+const vishingSummaryRequested = new Set<string>()
+const vishingSummaryAttempted = new Set<string>()
+const vishingSummaryInFlight = new Set<string>()
 const vishingConversationByMessageId = ref<Map<string, string>>(new Map())
 const vishingTranscriptByConversationId = ref<Map<string, VishingCallTranscriptPayload>>(new Map())
+const vishingSummaryByConversationId = ref<Map<string, VishingConversationSummaryPayload>>(new Map())
 
 const clearAllVishingPolling = () => {
   for (const timer of vishingPollingTimers.values()) {
@@ -379,6 +384,9 @@ const clearAllVishingPolling = () => {
   vishingPollingTimers.clear()
   vishingPollingStartedAt.clear()
   vishingPollingInFlight.clear()
+  vishingSummaryRequested.clear()
+  vishingSummaryAttempted.clear()
+  vishingSummaryInFlight.clear()
 }
 
 type VishingStatusResponse = {
@@ -423,6 +431,12 @@ const setVishingTranscriptForConversation = (conversationId: string, payload: Vi
   vishingTranscriptByConversationId.value = next
 }
 
+const setVishingSummaryForConversation = (conversationId: string, payload: VishingConversationSummaryPayload) => {
+  const next = new Map(vishingSummaryByConversationId.value)
+  next.set(conversationId, payload)
+  vishingSummaryByConversationId.value = next
+}
+
 const isTerminalVishingStatus = (status?: string) => {
   const normalized = (status || '').toLowerCase()
   return normalized === 'done' || normalized === 'failed' || normalized === 'timeout'
@@ -448,12 +462,15 @@ const normalizeVishingResponse = (
     || response.metadata?.audio_url
     || undefined
 
-  const transcript = Array.isArray(response.transcript)
-    ? response.transcript.map((item) => ({
-      role: item.role === 'agent' ? 'agent' : 'user',
-      message: item.message || '',
-      timestamp: Number(item.timestamp || 0)
-    }))
+  const transcript: VishingCallTranscriptPayload['transcript'] = Array.isArray(response.transcript)
+    ? response.transcript.map((item) => {
+      const role: 'agent' | 'user' = item.role === 'agent' ? 'agent' : 'user'
+      return {
+        role,
+        message: item.message || '',
+        timestamp: Number(item.timestamp || 0)
+      }
+    })
     : []
 
   return {
@@ -475,6 +492,71 @@ const stopVishingPolling = (conversationId: string) => {
   }
   vishingPollingStartedAt.delete(conversationId)
   vishingPollingInFlight.delete(conversationId)
+}
+
+type VishingConversationSummaryResponse = {
+  success?: boolean
+  summary?: VishingConversationSummaryPayload['summary']
+  nextSteps?: VishingConversationSummaryPayload['nextSteps']
+  statusCard?: VishingConversationSummaryPayload['statusCard']
+}
+
+const requestVishingSummary = async (conversationId: string, payload: VishingCallTranscriptPayload) => {
+  if (
+    !conversationId
+    || vishingSummaryRequested.has(conversationId)
+    || vishingSummaryAttempted.has(conversationId)
+    || vishingSummaryInFlight.has(conversationId)
+  ) return
+  if (!isTerminalVishingStatus(payload.status)) return
+  if (!payload.transcript?.length) return
+
+  vishingSummaryAttempted.add(conversationId)
+  vishingSummaryInFlight.add(conversationId)
+  const summaryBody = {
+    accessToken: accessToken.value || undefined,
+    conversationId,
+    messages: payload.transcript.map((item) => ({
+      role: item.role,
+      text: item.message,
+      timestamp: item.timestamp
+    }))
+  }
+
+  try {
+    const summaryUrl = buildUrl('/api/vishing/conversations/summary')
+    console.log('[vishing-summary] request', { chatId, conversationId, summaryUrl, messageCount: summaryBody.messages.length })
+    const response = await secureFetch<VishingConversationSummaryResponse>(summaryUrl, {
+      method: 'POST',
+      body: summaryBody,
+      headers: {
+        ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
+        ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
+        ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
+      }
+    })
+
+    const normalized: VishingConversationSummaryPayload = {
+      summary: response?.summary,
+      nextSteps: response?.nextSteps || [],
+      statusCard: response?.statusCard
+    }
+
+    setVishingSummaryForConversation(conversationId, normalized)
+    vishingSummaryRequested.add(conversationId)
+    console.log('[vishing-summary] response', {
+      chatId,
+      conversationId,
+      success: response?.success,
+      hasStatusCard: Boolean(response?.statusCard),
+      timelineLength: response?.summary?.timeline?.length || 0,
+      nextStepsLength: response?.nextSteps?.length || 0
+    })
+  } catch (error) {
+    console.error('[vishing-summary] request failed', { chatId, conversationId, error })
+  } finally {
+    vishingSummaryInFlight.delete(conversationId)
+  }
 }
 
 const pollVishingConversation = async (conversationId: string) => {
@@ -536,6 +618,7 @@ const pollVishingConversation = async (conversationId: string) => {
       callDurationSecs: normalized.callDurationSecs
     })
     setVishingTranscriptForConversation(conversationId, normalized)
+    requestVishingSummary(conversationId, normalized)
     const previousLength = existing?.transcript?.length || 0
     if (!isTerminalVishingStatus(normalized.status) && normalized.transcript.length > previousLength) {
       // Pull once more quickly after new live transcript chunks for snappier UI.
@@ -620,6 +703,7 @@ const processVishingStartedSignal = (message: any) => {
       transcriptLength: transcriptFromMessage.transcript?.length || 0
     })
     setVishingTranscriptForConversation(transcriptFromMessage.conversationId, transcriptFromMessage)
+    requestVishingSummary(transcriptFromMessage.conversationId, transcriptFromMessage)
     if (isTerminalVishingStatus(transcriptFromMessage.status)) {
       stopVishingPolling(transcriptFromMessage.conversationId)
       return
@@ -640,7 +724,7 @@ const processVishingStartedSignal = (message: any) => {
 }
 
 const vishingUiByMessageId = computed(() => {
-  const result = new Map<string, { started: VishingCallStartedPayload | null; transcript: VishingCallTranscriptPayload | null }>()
+  const result = new Map<string, { started: VishingCallStartedPayload | null; transcript: VishingCallTranscriptPayload | null; summary: VishingConversationSummaryPayload | null }>()
 
   for (const message of messages.value) {
     const startedFromMessage = extractVishingCallStartedFromMessage(message)
@@ -648,6 +732,7 @@ const vishingUiByMessageId = computed(() => {
     const mappedConversationId = vishingConversationByMessageId.value.get(message.id)
     const conversationId = startedFromMessage?.conversationId || transcriptFromMessage?.conversationId || mappedConversationId || ''
     const polledTranscript = conversationId ? vishingTranscriptByConversationId.value.get(conversationId) || null : null
+    const summary = conversationId ? vishingSummaryByConversationId.value.get(conversationId) || null : null
 
     const started: VishingCallStartedPayload | null = startedFromMessage || (
       conversationId
@@ -660,7 +745,7 @@ const vishingUiByMessageId = computed(() => {
     )
 
     const transcript = transcriptFromMessage || polledTranscript
-    result.set(message.id, { started, transcript })
+    result.set(message.id, { started, transcript, summary })
   }
 
   return result
@@ -677,6 +762,7 @@ watch(
       clearAllVishingPolling()
       vishingConversationByMessageId.value = new Map()
       vishingTranscriptByConversationId.value = new Map()
+      vishingSummaryByConversationId.value = new Map()
     }
   }
 )
@@ -909,6 +995,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   v-if="vishingUiByMessageId.get(message.id)?.started || vishingUiByMessageId.get(message.id)?.transcript"
                   :started="vishingUiByMessageId.get(message.id)?.started || null"
                   :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
+                  :summary="vishingUiByMessageId.get(message.id)?.summary || null"
                 />
 
                 <!-- Reasoning (shown above content, also during streaming) -->
