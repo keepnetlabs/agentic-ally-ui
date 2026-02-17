@@ -213,6 +213,7 @@ export interface VishingSummaryData {
 export interface VishingNextStepItem {
     title: string
     description: string
+    prompt?: string
 }
 
 export interface VishingStatusCard {

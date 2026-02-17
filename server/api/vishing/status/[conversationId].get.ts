@@ -35,7 +35,7 @@ type ElevenLabsConversationResponse = {
   transcript?: ElevenLabsTranscriptEntry[]
 }
 
-const ELEVENLABS_TIMEOUT_MS = 10000
+const ELEVENLABS_TIMEOUT_MS = 30000
 const CONVERSATION_ID_PATTERN = /^conv_[A-Za-z0-9_-]{6,128}$/
 
 const escapeLikePattern = (input: string) =>

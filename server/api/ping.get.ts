@@ -1,8 +1,8 @@
 export default defineEventHandler((event) => {
-    // Sadece cookie set et
+    // Set only a lightweight init cookie
     setCookie(event, 'app-init', '1', {
         sameSite: 'none',
-        // Localhost için false, production için true
+        // false on localhost, true in production
         secure: process.env.NODE_ENV === 'production',
         httpOnly: false
     })

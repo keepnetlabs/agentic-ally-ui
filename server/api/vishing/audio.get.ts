@@ -1,6 +1,6 @@
 import { createError, getQuery } from 'h3'
 
-const AUDIO_FETCH_TIMEOUT_MS = 15000
+const AUDIO_FETCH_TIMEOUT_MS = 30000
 const CONVERSATION_ID_PATTERN = /^conv_[A-Za-z0-9_-]{6,128}$/
 
 function isAllowedAudioHost(hostname: string) {

@@ -77,10 +77,10 @@ const accessDenied = ref(false)
 const siteOpened = ref(false)
 const siteUrl = ref('')
 
-// Gerçek aktif mode'u al (sadece 'dark' veya 'light')
+// Resolve active mode ('dark' or 'light')
 const getActiveMode = () => {
   const mode = colorMode.value
-  // 'system' ise gerçek mode'u kontrol et
+  // Resolve from OS when mode is 'system'
   if (mode === 'system') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   }
@@ -110,12 +110,12 @@ const canUseStorage = () => {
 onMounted(async () => {
   siteUrl.value = window.location.origin
 
-  // Sadece Safari'de çalışsın
+  // Only run on Safari
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   const isInIframe = window.parent !== window
   const hasStorageApi = 'requestStorageAccess' in document
 
-  // Safari iframe cookie/storage access kontrolü
+  // Check Safari iframe cookie/storage access
   if (isSafari && isInIframe && hasStorageApi) {
     try {
       const hasAccess = await document.hasStorageAccess()
@@ -132,7 +132,7 @@ onMounted(async () => {
     return
   }
 
-  // İlk cookie set et
+  // Set initial cookie
   $fetch('/api/ping').catch(() => {})
 
   // Handle direct accessToken from query (Migration/Fallback logic)
@@ -149,19 +149,19 @@ onMounted(async () => {
     await exchangeAuthToken(code.value, baseApiUrl.value)
   }
 
-  // Color mode'u parent'a gönder (iframe içindeyse)
+  // Notify parent with current color mode
   sendColorModeToParent()
 
-  // System preference değiştiğinde de bildir
+  // Also notify on system preference changes
   if (window.matchMedia) {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     mediaQuery.addEventListener('change', sendColorModeToParent)
   }
 
-  // Safari'de iframe prompt'u yukarıda ele alindi
+  // Safari iframe prompt is handled above
 })
 
-// Color mode değiştiğinde parent'a bildir
+// Notify parent when color mode changes
 watch(colorMode, () => {
   sendColorModeToParent()
 })
@@ -173,13 +173,13 @@ async function requestSafariAccess() {
     location.reload()
   } catch (e) {
     console.error('Storage access denied:', e)
-    // Safari denied - first-party ziyaret gerekli
+    // Safari denied; first-party visit is required
     accessDenied.value = true
   }
 }
 
 function openSiteAndRetry() {
-  // Siteyi yeni sekmede aç
+  // Open site in a new tab
   window.open(siteUrl.value, '_blank')
   // Flag set et
   siteOpened.value = true

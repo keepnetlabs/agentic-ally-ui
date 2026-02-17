@@ -1,4 +1,7 @@
 import { createError, getHeader, getQuery } from 'h3'
+import { captureUpstreamException, captureUpstreamMessage } from '../../../utils/sentry-upstream'
+
+const ROUTE_NAME = '/api/phishing/editor/save'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -10,6 +13,12 @@ export default defineEventHandler(async (event) => {
 
   const fleetAgentUrl = process.env.FLEET_AGENT_URL
   if (!fleetAgentUrl) {
+    captureUpstreamMessage('FLEET_AGENT_URL is not configured', {
+      component: 'phishing-editor-upstream',
+      route: ROUTE_NAME,
+      companyId: getHeader(event, 'x-company-id') || 'unknown',
+      fingerprint: ['phishing-editor-upstream', 'misconfiguration', 'fleet-agent-url-missing']
+    })
     throw createError({ statusCode: 500, statusMessage: 'FLEET_AGENT_URL is not configured' })
   }
 
@@ -49,11 +58,26 @@ export default defineEventHandler(async (event) => {
     hasBaseApiUrl: Boolean(baseApiUrl)
   })
 
-  const response = await fetch(targetUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body ?? {})
-  })
+  let response: Response
+  try {
+    response = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body ?? {})
+    })
+  } catch (error) {
+    captureUpstreamException(error, {
+      component: 'phishing-editor-upstream',
+      route: ROUTE_NAME,
+      companyId: companyId || 'unknown',
+      fingerprint: ['phishing-editor-upstream', 'fetch-error'],
+      tags: {
+        errorType: 'fetch'
+      },
+      extras: { targetUrl }
+    })
+    throw createError({ statusCode: 502, statusMessage: 'Failed to reach phishing editor upstream' })
+  }
 
   const contentType = response.headers.get('content-type') || ''
   const payload = contentType.includes('application/json')
@@ -62,6 +86,19 @@ export default defineEventHandler(async (event) => {
 
   if (!response.ok) {
     const message = typeof payload === 'string' ? payload : payload?.message || response.statusText
+    captureUpstreamMessage('Phishing editor upstream returned non-OK status', {
+      component: 'phishing-editor-upstream',
+      route: ROUTE_NAME,
+      companyId: companyId || 'unknown',
+      fingerprint: ['phishing-editor-upstream', 'http-non-ok', String(response.status)],
+      tags: {
+        statusCode: response.status
+      },
+      extras: {
+        targetUrl,
+        responseBody: payload
+      }
+    })
     throw createError({ statusCode: response.status, statusMessage: message })
   }
 

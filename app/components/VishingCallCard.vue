@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type {
   VishingCallStartedPayload,
   VishingCallTranscriptPayload,
-  VishingConversationSummaryPayload
+  VishingConversationSummaryPayload,
+  VishingNextStepItem
 } from '../utils/message-utils'
 
 const props = defineProps<{
   started: VishingCallStartedPayload | null
   transcript: VishingCallTranscriptPayload | null
   summary: VishingConversationSummaryPayload | null
+}>()
+
+const emit = defineEmits<{
+  createNextStep: [nextStep: VishingNextStepItem]
 }>()
 
 const callStatus = computed(() => {
@@ -75,6 +80,7 @@ const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
 const audioRetryTick = ref(0)
+const audioRetryTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const AUDIO_RETRY_DELAY_MS = 1500
 const AUDIO_MAX_RETRIES = 8
 const waveformBars = Array.from({ length: 84 }, (_, i) => {
@@ -83,11 +89,22 @@ const waveformBars = Array.from({ length: 84 }, (_, i) => {
   return 5 + Math.round(Math.abs((waveA * 0.65) + (waveB * 0.35)) * 22)
 })
 watch(proxiedAudioSrc, () => {
+  if (audioRetryTimer.value) {
+    clearTimeout(audioRetryTimer.value)
+    audioRetryTimer.value = null
+  }
   audioLoadError.value = false
   isPlaying.value = false
   currentTime.value = 0
   duration.value = 0
   audioRetryTick.value = 0
+})
+
+onBeforeUnmount(() => {
+  if (audioRetryTimer.value) {
+    clearTimeout(audioRetryTimer.value)
+    audioRetryTimer.value = null
+  }
 })
 
 const resolvedAudioSrc = computed(() => {
@@ -132,12 +149,19 @@ const seekTo = (event: MouseEvent) => {
 }
 
 const onAudioError = () => {
-  audioLoadError.value = true
+  if (audioRetryTimer.value) {
+    clearTimeout(audioRetryTimer.value)
+    audioRetryTimer.value = null
+  }
   if (!isTerminalStatus.value) return
-  if (audioRetryTick.value >= AUDIO_MAX_RETRIES - 1) return
-  setTimeout(() => {
+  if (audioRetryTick.value >= AUDIO_MAX_RETRIES - 1) {
+    audioLoadError.value = true
+    return
+  }
+  audioLoadError.value = false
+  audioRetryTimer.value = setTimeout(() => {
     audioRetryTick.value += 1
-    audioLoadError.value = false
+    audioRetryTimer.value = null
   }, AUDIO_RETRY_DELAY_MS)
 }
 
@@ -322,7 +346,7 @@ watch(() => props.summary, (next) => {
           @ended="isPlaying = false"
         />
         <p v-if="audioLoadError" class="mt-1 text-[11px] text-red-500">
-          Audio yuklenemedi.
+          Audio failed to load.
         </p>
       </div>
 
@@ -401,24 +425,32 @@ watch(() => props.summary, (next) => {
           </div>
         </div>
 
-        <div v-if="activeTab === 'transcript'" class="max-h-64 space-y-1.5 overflow-auto px-3 py-3">
+        <div v-if="activeTab === 'transcript'" class="max-h-64 space-y-2 overflow-auto px-3 py-3">
           <div
             v-for="(entry, index) in (transcript?.transcript || [])"
             :key="index"
-            class="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-gray-800 dark:bg-gray-950"
+            class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-950"
           >
-            <div class="flex items-center justify-between gap-2 text-[11px]">
-              <span class="font-semibold uppercase tracking-wide" :class="entry.role === 'agent' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'">
+            <div class="flex items-center justify-between gap-2">
+              <span
+                class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+                :class="entry.role === 'agent'
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                  : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200'"
+              >
                 {{ entry.role === 'agent' ? 'Agent' : 'User' }}
               </span>
-              <span class="text-muted-foreground">
+              <span class="shrink-0 rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:border-gray-700 dark:bg-gray-900 dark:text-slate-300">
                 {{ Number(entry.timestamp || 0).toFixed(1) }}s
               </span>
             </div>
-            <p class="mt-1 whitespace-pre-wrap text-xs text-gray-700 dark:text-gray-200">
+            <p class="mt-1.5 whitespace-pre-wrap text-sm leading-5 text-slate-700 dark:text-slate-200">
               {{ entry.message }}
             </p>
           </div>
+          <p v-if="!(transcript?.transcript?.length)" class="text-sm text-slate-500 dark:text-slate-300">
+            No transcript lines yet.
+          </p>
         </div>
 
         <div v-if="activeTab === 'next-steps'" class="space-y-2 px-3 py-3">
@@ -427,8 +459,22 @@ watch(() => props.summary, (next) => {
             :key="index"
             class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-950"
           >
-            <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ step.title }}</p>
-            <p class="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{{ step.description }}</p>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ step.title }}</p>
+                <p class="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{{ step.description }}</p>
+              </div>
+              <UButton
+                size="xs"
+                color="info"
+                variant="soft"
+                icon="i-lucide-wand-sparkles"
+                class="shrink-0"
+                @click="emit('createNextStep', step)"
+              >
+                Create
+              </UButton>
+            </div>
           </div>
           <p v-if="!(props.summary?.nextSteps?.length)" class="text-sm text-slate-500 dark:text-slate-300">
             No next steps provided.
@@ -458,21 +504,26 @@ watch(() => props.summary, (next) => {
           <summary class="cursor-pointer list-none px-2.5 py-2 text-xs font-medium text-gray-700 dark:text-gray-200">
             Transcript ({{ transcript?.transcript?.length || 0 }})
           </summary>
-          <div class="max-h-56 overflow-auto border-t border-gray-200 px-2.5 py-2 space-y-1.5 dark:border-gray-700">
+          <div class="max-h-56 overflow-auto border-t border-gray-200 px-2.5 py-2 space-y-2 dark:border-gray-700">
             <div
               v-for="(entry, index) in (transcript?.transcript || [])"
               :key="index"
-              class="rounded border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-gray-800 dark:bg-gray-950"
+              class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-950"
             >
-              <div class="flex items-center justify-between gap-2 text-[11px]">
-                <span class="font-semibold uppercase tracking-wide" :class="entry.role === 'agent' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'">
+              <div class="flex items-center justify-between gap-2">
+                <span
+                  class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+                  :class="entry.role === 'agent'
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                    : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200'"
+                >
                   {{ entry.role === 'agent' ? 'Agent' : 'User' }}
                 </span>
-                <span class="text-muted-foreground">
+                <span class="shrink-0 rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:border-gray-700 dark:bg-gray-900 dark:text-slate-300">
                   {{ Number(entry.timestamp || 0).toFixed(1) }}s
                 </span>
               </div>
-              <p class="mt-1 whitespace-pre-wrap text-xs text-gray-700 dark:text-gray-200">
+              <p class="mt-1.5 whitespace-pre-wrap text-sm leading-5 text-slate-700 dark:text-slate-200">
                 {{ entry.message }}
               </p>
             </div>

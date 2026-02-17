@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/nuxt'
+
 export interface ErrorDisplay {
   title: string
   message: string
@@ -197,6 +199,7 @@ const errorMessages: Record<ErrorType, Omit<ErrorDisplay, 'canRetry'> & { canRet
 export const parseError = (error: unknown): ErrorDisplay => {
   const context = getErrorContext(error)
   const display = errorMessages[context.type]
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : 'unknown'
 
   // If we have a specific message from backend, use it
   let finalMessage = display.message
@@ -211,6 +214,25 @@ export const parseError = (error: unknown): ErrorDisplay => {
   // Log for debugging
   if (process.env.NODE_ENV === 'development') {
     console.error('[Error Context]', context)
+  }
+
+  // Send actionable client-side failures to Sentry
+  if (context.type === 'network' || context.type === 'timeout' || context.type === 'server' || context.type === 'unknown') {
+    const normalizedError = error instanceof Error ? error : new Error(context.originalMessage || 'Unknown client error')
+    const statusTag = context.status ? String(context.status) : 'none'
+    Sentry.captureException(normalizedError, {
+      tags: {
+        component: 'ui',
+        errorType: context.type,
+        statusCode: statusTag,
+        route: currentPath
+      },
+      fingerprint: ['ui-chat', context.type, statusTag],
+      extra: {
+        status: context.status,
+        originalMessage: context.originalMessage
+      }
+    })
   }
 
   return {

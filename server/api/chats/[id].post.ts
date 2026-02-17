@@ -3,6 +3,9 @@ import { and } from 'drizzle-orm'
 import * as tables from '../../database/schema'
 import { extractCompanyId } from '../../utils/company-id'
 import { resolveChatUserId } from '../../utils/iframe-auth'
+import { captureUpstreamException, captureUpstreamMessage } from '../../utils/sentry-upstream'
+
+const ROUTE_NAME = '/api/chats/[id]'
 
 defineRouteMeta({
   openAPI: {
@@ -27,6 +30,7 @@ const cleanMetadata = (obj: any) => {
 
 export default defineEventHandler(async (event) => {
   const { id } = getRouterParams(event)
+  const chatId = id as string
   // TODO: Use readValidatedBody
   const { modelProvider, model, messages, conversationId } = await readBody(event)
 
@@ -35,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
   const chat = await db.query.chats.findFirst({
     where: (chat, { eq }) => {
-      return and(eq(chat.id, id as string), eq(chat.userId, userId))
+      return and(eq(chat.id, chatId), eq(chat.userId, userId))
     }
   })
 
@@ -47,7 +51,7 @@ export default defineEventHandler(async (event) => {
   const lastMessage = messages[messages.length - 1]
   if (lastMessage.role === 'user' && messages.length > 1) {
     await db.insert(tables.messages).values({
-      chatId: id as string,
+      chatId,
       role: 'user',
       content: parseAIMessage(lastMessage)
     })
@@ -83,16 +87,35 @@ export default defineEventHandler(async (event) => {
   }
 
   // Proxy the request to the Fleet Agent Worker backend
-  console.log('FLEET_AGENT_URL', process.env.FLEET_AGENT_URL)
+  const fleetAgentUrl = process.env.FLEET_AGENT_URL
+  console.log('FLEET_AGENT_URL configured:', Boolean(fleetAgentUrl))
+  if (!fleetAgentUrl) {
+    captureUpstreamMessage('FLEET_AGENT_URL is not configured', {
+      component: 'chat-upstream',
+      route: ROUTE_NAME,
+      companyId,
+      userId,
+      fingerprint: ['chat-upstream', 'misconfiguration', 'fleet-agent-url-missing'],
+      extras: { chatId }
+    })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Fleet Agent URL is not configured'
+    })
+  }
 
   try {
     const config = useRuntimeConfig()
     const accessToken = getHeader(event, 'x-agentic-ally-token') || config.viteDefaultToken || ''
-    console.log('accessToken', accessToken)
-    console.log('companyId', companyId)
-    console.log('baseApiUrl', baseApiUrl)
-    console.log('policyUrls', policyUrls)
-    const response = await fetch(process.env.FLEET_AGENT_URL!, {
+    console.log('Fleet Agent request context:', {
+      hasAccessToken: Boolean(accessToken),
+      hasCompanyId: Boolean(companyId),
+      hasBaseApiUrl: Boolean(baseApiUrl),
+      policyUrlsCount: policyUrls.length,
+      modelProvider: String(modelProvider || 'unknown'),
+      model: String(model || 'unknown')
+    })
+    const response = await fetch(fleetAgentUrl!, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -104,7 +127,31 @@ export default defineEventHandler(async (event) => {
     })
 
     if (!response.ok) {
-      console.error('Fleet Agent response error:', response.status, response.statusText)
+      const responseText = await response.text().catch(() => '')
+      console.error('Fleet Agent upstream returned non-OK status:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText
+      })
+      captureUpstreamMessage('Fleet Agent upstream returned non-OK status', {
+        component: 'chat-upstream',
+        route: ROUTE_NAME,
+        companyId,
+        userId,
+        fingerprint: ['chat-upstream', 'http-non-ok', String(response.status)],
+        tags: {
+          statusCode: response.status,
+          modelProvider: String(modelProvider || 'unknown'),
+          model: String(model || 'unknown')
+        },
+        extras: {
+          chatId,
+          upstreamStatus: response.status,
+          upstreamStatusText: response.statusText,
+          responseBody: responseText,
+          conversationId: conversationId || null
+        }
+      })
       throw createError({
         statusCode: response.status,
         statusMessage: `Fleet Agent error: ${response.statusText}`
@@ -305,6 +352,26 @@ export default defineEventHandler(async (event) => {
     return sendStream(event, encoded)
   } catch (error: any) {
     console.error('Fleet Agent fetch error:', error)
+    const statusCode = error?.statusCode ? String(error.statusCode) : 'none'
+    const errorName = error?.name ? String(error.name) : 'Error'
+    captureUpstreamException(error, {
+      component: 'chat-upstream',
+      route: ROUTE_NAME,
+      companyId,
+      userId,
+      fingerprint: ['chat-upstream', 'fetch-exception', errorName, statusCode],
+      tags: {
+        statusCode,
+        errorName,
+        modelProvider: String(modelProvider || 'unknown')
+      },
+      extras: {
+        chatId,
+        hasCompanyId: Boolean(companyId),
+        hasBaseApiUrl: Boolean(baseApiUrl),
+        conversationId: conversationId || null
+      }
+    })
 
     // Propagate existing H3 errors (including the one we threw above for !response.ok)
     if (error.statusCode) {

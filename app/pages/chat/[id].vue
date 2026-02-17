@@ -24,6 +24,7 @@ import {
   extractVishingCallTranscriptFromMessage,
   type VishingCallStartedPayload,
   type VishingCallTranscriptPayload,
+  type VishingNextStepItem,
   type VishingConversationSummaryPayload,
   getSanitizedContentForTemplate,
   getAllStreamText,
@@ -335,6 +336,11 @@ const handlePromptSubmit = () => {
   applyTargetTags()
   handleSubmit()
   clearSelectedTargets()
+}
+
+const handleCreateVishingNextStep = (nextStep: VishingNextStepItem) => {
+  input.value = nextStep.prompt || `Create training about ${nextStep.title}`
+  promptRef.value?.focus?.()
 }
 
 
@@ -996,6 +1002,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :started="vishingUiByMessageId.get(message.id)?.started || null"
                   :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
                   :summary="vishingUiByMessageId.get(message.id)?.summary || null"
+                  @create-next-step="handleCreateVishingNextStep"
                 />
 
                 <!-- Reasoning (shown above content, also during streaming) -->
