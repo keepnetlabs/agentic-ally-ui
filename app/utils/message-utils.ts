@@ -324,6 +324,7 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/g, '')
         .replace(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/g, '')
         .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
+        .replace(/::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
 }
 
@@ -386,6 +387,7 @@ export function getSanitizedTitle(rawTitle: string): string {
         .replace(/::ui:smishing_landing_page::([\s\S]+?)::\/ui:smishing_landing_page::/g, '')
         .replace(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/g, '')
         .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
+        .replace(/::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
         .replace(/::ui:target_user::[^\n]*/g, '')
         .replace(/::\/ui:target_user::/g, '')
@@ -397,6 +399,44 @@ export function getSanitizedTitle(rawTitle: string): string {
 export function getAllStreamText(message: any): string {
     const parts = extractTextPartsForTemplate(message) || []
     return parts.map((p: any) => p?.delta || p?.text || '').join('')
+}
+
+// Extract deepfake video generating signal from message
+export type DeepfakeVideoGeneratingPayload = {
+    videoId: string
+    status: string
+}
+
+export function extractDeepfakeVideoGeneratingFromMessage(
+    msg: any
+): DeepfakeVideoGeneratingPayload | null {
+    const extractAndDecode = (text: string): DeepfakeVideoGeneratingPayload | null => {
+        const match = text.match(
+            /::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/
+        )
+        if (!match?.[1]) return null
+        try {
+            return JSON.parse(base64ToUtf8(match[1].trim()))
+        } catch {
+            return null
+        }
+    }
+
+    // Check stream parts
+    const parts = msg?.parts || []
+    for (const part of parts) {
+        if (part?.type === 'text' && part?.text) {
+            const result = extractAndDecode(part.text)
+            if (result) return result
+        }
+    }
+
+    // Fallback: check content string
+    if (typeof msg?.content === 'string') {
+        return extractAndDecode(msg.content)
+    }
+
+    return null
 }
 
 // Show message content in canvas (URL, email, code, or preview)

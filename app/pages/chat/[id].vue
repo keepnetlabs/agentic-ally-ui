@@ -22,10 +22,12 @@ import {
   extractLandingPageFromMessage,
   extractVishingCallStartedFromMessage,
   extractVishingCallTranscriptFromMessage,
+  extractDeepfakeVideoGeneratingFromMessage,
   type VishingCallStartedPayload,
   type VishingCallTranscriptPayload,
   type VishingNextStepItem,
   type VishingConversationSummaryPayload,
+  type DeepfakeVideoGeneratingPayload,
   getSanitizedContentForTemplate,
   getAllStreamText,
   showInCanvas as showInCanvasUtil
@@ -328,6 +330,8 @@ onBeforeUnmount(() => {
   isComponentActive.value = false
   stop()
   clearAllVishingPolling()
+  for (const timer of deepfakePollingTimers.values()) clearInterval(timer)
+  deepfakePollingTimers.clear()
 })
 const reload = createReload(chatClient)
 
@@ -372,6 +376,20 @@ const canvasRef = ref()
 const openCanvasType = ref<'email' | 'landing-page' | null>(null)
 const VISHING_POLL_INTERVAL_MS = 1000
 const VISHING_POLL_TIMEOUT_MS = 600000
+
+const DEEPFAKE_POLL_INTERVAL_MS  = 10_000   // 10 saniye — render 1-2dk sürer
+const DEEPFAKE_POLL_TIMEOUT_MS   = 300_000  // 5 dakika max
+
+const deepfakePollingTimers      = new Map<string, ReturnType<typeof setInterval>>()
+const deepfakePollingStartedAt   = new Map<string, number>()
+const deepfakePollingInFlight    = new Set<string>()
+const deepfakeStatusByVideoId    = ref<Map<string, {
+  videoId: string
+  status: string
+  videoUrl: string | null
+  thumbnailUrl: string | null
+  durationSec: number | null
+}>>(new Map())
 
 const vishingPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
 const vishingPollingStartedAt = new Map<string, number>()
@@ -769,9 +787,147 @@ watch(
       vishingConversationByMessageId.value = new Map()
       vishingTranscriptByConversationId.value = new Map()
       vishingSummaryByConversationId.value = new Map()
+
+      // Deepfake polling temizle
+      for (const timer of deepfakePollingTimers.values()) clearInterval(timer)
+      deepfakePollingTimers.clear()
+      deepfakePollingStartedAt.clear()
+      deepfakePollingInFlight.clear()
+      deepfakeStatusByVideoId.value = new Map()
     }
   }
 )
+
+const isTerminalDeepfakeStatus = (status: string) =>
+  status === 'completed' || status === 'failed'
+
+const stopDeepfakePolling = (videoId: string) => {
+  const timer = deepfakePollingTimers.get(videoId)
+  if (timer) clearInterval(timer)
+  deepfakePollingTimers.delete(videoId)
+  deepfakePollingStartedAt.delete(videoId)
+  deepfakePollingInFlight.delete(videoId)
+}
+
+const pollDeepfakeStatus = async (videoId: string) => {
+  if (deepfakePollingInFlight.has(videoId)) return
+
+  const existing = deepfakeStatusByVideoId.value.get(videoId)
+  if (existing && isTerminalDeepfakeStatus(existing.status)) {
+    stopDeepfakePolling(videoId)
+    return
+  }
+
+  const startedAt = deepfakePollingStartedAt.get(videoId) || Date.now()
+  if (!deepfakePollingStartedAt.has(videoId)) deepfakePollingStartedAt.set(videoId, startedAt)
+  if (Date.now() - startedAt >= DEEPFAKE_POLL_TIMEOUT_MS) {
+    console.warn('[deepfake-ui] poll timeout reached', { videoId, timeoutMs: DEEPFAKE_POLL_TIMEOUT_MS })
+    const next = new Map(deepfakeStatusByVideoId.value)
+    next.set(videoId, { videoId, status: 'failed', videoUrl: null, thumbnailUrl: null, durationSec: null })
+    deepfakeStatusByVideoId.value = next
+    stopDeepfakePolling(videoId)
+    return
+  }
+
+  deepfakePollingInFlight.add(videoId)
+  try {
+    const statusUrlBase = buildUrl(`/api/deepfake/status/${encodeURIComponent(videoId)}`)
+    const separator = statusUrlBase.includes('?') ? '&' : '?'
+    const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}`
+    console.log('[deepfake-ui] poll request', { videoId, statusUrl })
+    const response = await secureFetch<{
+      success: boolean
+      videoId: string
+      status: string
+      videoUrl: string | null
+      thumbnailUrl: string | null
+      durationSec: number | null
+    }>(statusUrl)
+
+    console.log('[deepfake-ui] poll response', {
+      videoId,
+      status: response.status,
+      hasVideoUrl: Boolean(response.videoUrl)
+    })
+
+    const next = new Map(deepfakeStatusByVideoId.value)
+    next.set(videoId, {
+      videoId,
+      status:       response.status ?? 'processing',
+      videoUrl:     response.videoUrl ?? null,
+      thumbnailUrl: response.thumbnailUrl ?? null,
+      durationSec:  response.durationSec ?? null,
+    })
+    deepfakeStatusByVideoId.value = next
+
+    if (isTerminalDeepfakeStatus(response.status)) {
+      console.log('[deepfake-ui] terminal status reached, stopping poll', { videoId, status: response.status })
+      stopDeepfakePolling(videoId)
+    }
+  } catch (err) {
+    console.error('[deepfake-ui] poll error', { videoId, err })
+  } finally {
+    deepfakePollingInFlight.delete(videoId)
+  }
+}
+
+const startDeepfakePolling = (videoId: string) => {
+  if (!videoId || deepfakePollingTimers.has(videoId)) return
+
+  deepfakePollingStartedAt.set(videoId, Date.now())
+  pollDeepfakeStatus(videoId)
+
+  const timer = setInterval(() => pollDeepfakeStatus(videoId), DEEPFAKE_POLL_INTERVAL_MS)
+  deepfakePollingTimers.set(videoId, timer)
+}
+
+const processDeepfakeSignal = (message: any) => {
+  if (!message?.id) return
+  const payload = extractDeepfakeVideoGeneratingFromMessage(message)
+  if (!payload?.videoId) return
+
+  if (!deepfakeStatusByVideoId.value.has(payload.videoId)) {
+    const next = new Map(deepfakeStatusByVideoId.value)
+    next.set(payload.videoId, {
+      videoId:      payload.videoId,
+      status:       'processing',
+      videoUrl:     null,
+      thumbnailUrl: null,
+      durationSec:  null,
+    })
+    deepfakeStatusByVideoId.value = next
+  }
+
+  startDeepfakePolling(payload.videoId)
+}
+
+const deepfakeUiByMessageId = computed(() => {
+  const result = new Map<string, {
+    videoId: string
+    status: string
+    videoUrl: string | null
+    thumbnailUrl: string | null
+    durationSec: number | null
+  } | null>()
+
+  for (const message of messages.value) {
+    const payload = extractDeepfakeVideoGeneratingFromMessage(message)
+    if (!payload?.videoId) {
+      result.set(message.id, null)
+      continue
+    }
+    const polled = deepfakeStatusByVideoId.value.get(payload.videoId)
+    result.set(message.id, polled ?? {
+      videoId:      payload.videoId,
+      status:       'processing',
+      videoUrl:     null,
+      thumbnailUrl: null,
+      durationSec:  null,
+    })
+  }
+
+  return result
+})
 
 const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
 
@@ -907,6 +1063,7 @@ watch(
     // 2️⃣ Also check for legacy UI signals in text (backward compatibility)
     maybeProcessUiSignals(last)
     processVishingStartedSignal(last)
+    processDeepfakeSignal(last)
   },
   { deep: true }
 )
@@ -917,6 +1074,7 @@ watch(
     for (const message of messages.value) {
       if (message?.role === 'assistant') {
         processVishingStartedSignal(message)
+        processDeepfakeSignal(message)
       }
     }
   },
@@ -1003,6 +1161,16 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
                   :summary="vishingUiByMessageId.get(message.id)?.summary || null"
                   @create-next-step="handleCreateVishingNextStep"
+                />
+
+                <!-- Deepfake Video UI -->
+                <DeepfakeVideoCard
+                  v-if="deepfakeUiByMessageId.get(message.id)"
+                  :video-id="deepfakeUiByMessageId.get(message.id)?.videoId || ''"
+                  :status="deepfakeUiByMessageId.get(message.id)?.status || 'processing'"
+                  :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
+                  :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
+                  :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
                 />
 
                 <!-- Reasoning (shown above content, also during streaming) -->
