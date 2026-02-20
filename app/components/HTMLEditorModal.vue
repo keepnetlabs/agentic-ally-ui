@@ -155,7 +155,7 @@ onMounted(() => {
     const res = originalParseHtml.call(this, html, csso)
 
     const parseCells = (obj: any) => {
-      if (obj.tagName === 'td') {
+      if (obj.tagName === 'td' || obj.tagName === 'th') {
         obj.type = 'table-cell'
       }
       if (obj.components) {
