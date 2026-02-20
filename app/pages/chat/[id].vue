@@ -376,6 +376,7 @@ const canvasRef = ref()
 const openCanvasType = ref<'email' | 'landing-page' | null>(null)
 const VISHING_POLL_INTERVAL_MS = 1000
 const VISHING_POLL_TIMEOUT_MS = 600000
+const VISHING_STATUS_FETCH_TIMEOUT_MS = 35000
 
 const DEEPFAKE_POLL_INTERVAL_MS  = 10_000   // 10 saniye — render 1-2dk sürer
 const DEEPFAKE_POLL_TIMEOUT_MS   = 300_000  // 5 dakika max
@@ -394,6 +395,8 @@ const deepfakeStatusByVideoId    = ref<Map<string, {
 const vishingPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
 const vishingPollingStartedAt = new Map<string, number>()
 const vishingPollingInFlight = new Set<string>()
+const vishingPollFailCount = new Map<string, number>()
+const VISHING_POLL_MAX_CONSECUTIVE_FAILURES = 3
 const vishingSummaryRequested = new Set<string>()
 const vishingSummaryAttempted = new Set<string>()
 const vishingSummaryInFlight = new Set<string>()
@@ -408,6 +411,7 @@ const clearAllVishingPolling = () => {
   vishingPollingTimers.clear()
   vishingPollingStartedAt.clear()
   vishingPollingInFlight.clear()
+  vishingPollFailCount.clear()
   vishingSummaryRequested.clear()
   vishingSummaryAttempted.clear()
   vishingSummaryInFlight.clear()
@@ -516,6 +520,7 @@ const stopVishingPolling = (conversationId: string) => {
   }
   vishingPollingStartedAt.delete(conversationId)
   vishingPollingInFlight.delete(conversationId)
+  vishingPollFailCount.delete(conversationId)
 }
 
 type VishingConversationSummaryResponse = {
@@ -630,7 +635,10 @@ const pollVishingConversation = async (conversationId: string) => {
     const separator = statusUrlBase.includes('?') ? '&' : '?'
     const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}&_t=${Date.now()}`
     console.log('[vishing-ui] poll request', { chatId, conversationId, statusUrl })
-    const response = await secureFetch<VishingStatusResponse>(statusUrl)
+    const response = await secureFetch<VishingStatusResponse>(statusUrl, {
+      timeout: VISHING_STATUS_FETCH_TIMEOUT_MS
+    })
+    vishingPollFailCount.set(conversationId, 0)
     const normalized = normalizeVishingResponse(conversationId, response)
     console.log('[vishing-ui] poll response', {
       chatId,
@@ -655,24 +663,34 @@ const pollVishingConversation = async (conversationId: string) => {
     }
   } catch (error) {
     const statusCode = (error as any)?.statusCode || (error as any)?.response?.status
-    if (statusCode === 400 || statusCode === 403 || statusCode === 404) {
+    const failCount = (vishingPollFailCount.get(conversationId) || 0) + 1
+    vishingPollFailCount.set(conversationId, failCount)
+
+    const isTerminalHttpError = statusCode === 400 || statusCode === 403 || statusCode === 404 ||
+      (statusCode != null && statusCode >= 500)
+    const tooManyFailures = failCount >= VISHING_POLL_MAX_CONSECUTIVE_FAILURES
+
+    if (isTerminalHttpError || tooManyFailures) {
+      const failureStatus = statusCode === 504 ? 'timeout' : 'failed'
       setVishingTranscriptForConversation(conversationId, {
         conversationId,
-        status: 'failed',
+        status: failureStatus,
         callDurationSecs: existing?.callDurationSecs || 0,
         hasAudio: existing?.hasAudio,
         recordingUrl: existing?.recordingUrl,
         transcript: existing?.transcript || []
       })
-      console.warn('[vishing-ui] poll failed with terminal status code', {
+      console.warn('[vishing-ui] poll failed, marking as terminal', {
         chatId,
         conversationId,
-        statusCode
+        statusCode,
+        failCount,
+        reason: isTerminalHttpError ? 'http-error' : 'consecutive-failures'
       })
       stopVishingPolling(conversationId)
       return
     }
-    console.error('[vishing-ui] poll error', { chatId, conversationId, error })
+    console.error('[vishing-ui] poll error', { chatId, conversationId, error, failCount })
   } finally {
     vishingPollingInFlight.delete(conversationId)
   }
@@ -1172,7 +1190,6 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
                   :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
                 />
-
                 <!-- Reasoning (shown above content, also during streaming) -->
                 <ReasoningSection :reasoning="message.reasoning" />
 
@@ -1181,7 +1198,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :is-streaming="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id"
                 />
 
-                <!-- Final content (non-streaming or non-last message) -->
+                <!-- Message text (above Vishing card so "Arama başlatıldı..." appears first) -->
                 <div v-if="!(status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id)" class="whitespace-pre-line">
                   <MDCCached
                     :value="getSanitizedContentForTemplate(message)"
@@ -1191,6 +1208,15 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                     :parser-options="{ highlight: false }"
                   />
                 </div>
+
+                <!-- Vishing Call UI (below message text) -->
+                <VishingCallCard
+                  v-if="vishingUiByMessageId.get(message.id)?.started || vishingUiByMessageId.get(message.id)?.transcript"
+                  :started="vishingUiByMessageId.get(message.id)?.started || null"
+                  :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
+                  :summary="vishingUiByMessageId.get(message.id)?.summary || null"
+                  @create-next-step="handleCreateVishingNextStep"
+                />
               </template>
             </UChatMessages>
 
