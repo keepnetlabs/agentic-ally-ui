@@ -97,8 +97,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const filename = decodedPath.replace(/^policies\//, '')
-  const fullBlobUrl = `policies/${companyId}/${filename}`
+  // Path is the full blobUrl (e.g. policies/companyId/fileId.pdf) - use as-is
+  const fullBlobUrl = decodedPath
 
   // Common headers
   const headers: Record<string, string> = {

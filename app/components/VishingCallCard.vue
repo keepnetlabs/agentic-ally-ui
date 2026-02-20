@@ -22,6 +22,10 @@ const callStatus = computed(() => {
 })
 
 const callStatusLabel = computed(() => {
+  const card = props.summary?.statusCard
+  if (card?.variant?.toLowerCase() === 'warning' && card?.title) {
+    return card.title
+  }
   const status = callStatus.value.toLowerCase()
   if (status === 'done') return 'Call Completed'
   if (status === 'failed') return 'Call Failed'
@@ -250,7 +254,7 @@ watch(() => props.summary, (next) => {
 </script>
 
 <template>
-  <div class="mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-gray-700 dark:bg-gray-950">
+  <div class="mt-2 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-gray-700 dark:bg-gray-950">
     <div class="px-4 py-3 md:px-5 md:py-4">
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2 text-slate-700 dark:text-slate-200">
@@ -259,7 +263,7 @@ watch(() => props.summary, (next) => {
         </div>
         <div class="text-xs flex items-center gap-2">
           <UBadge
-            :color="callStatus === 'done' ? 'success' : (callStatus === 'failed' || callStatus === 'timeout') ? 'error' : 'warning'"
+            :color="(props.summary?.statusCard?.variant?.toLowerCase() === 'warning') ? 'warning' : (callStatus === 'done' ? 'success' : (callStatus === 'failed' || callStatus === 'timeout') ? 'error' : 'warning')"
             variant="soft"
             size="xs"
           >
@@ -378,7 +382,9 @@ watch(() => props.summary, (next) => {
           </button>
         </div>
 
-        <div v-if="activeTab === 'summary'" class="space-y-3 px-3 py-3">
+        <div class="grid min-h-64">
+          <div class="col-start-1 row-start-1 min-h-0" :class="{ 'invisible pointer-events-none': activeTab !== 'summary', 'z-10': activeTab === 'summary' }">
+        <div class="space-y-3 px-3 py-3">
           <p class="text-sm text-slate-700 dark:text-slate-200">
             <span class="font-semibold text-slate-500 dark:text-slate-300">Total Time</span>
             {{ formatMmSs(totalSeconds) }}
@@ -424,8 +430,9 @@ watch(() => props.summary, (next) => {
             </div>
           </div>
         </div>
-
-        <div v-if="activeTab === 'transcript'" class="max-h-64 space-y-2 overflow-auto px-3 py-3">
+          </div>
+          <div class="col-start-1 row-start-1 min-h-0" :class="{ 'invisible pointer-events-none': activeTab !== 'transcript', 'z-10': activeTab === 'transcript' }">
+        <div class="min-h-full max-h-80 space-y-2 overflow-auto px-3 py-3">
           <div
             v-for="(entry, index) in (transcript?.transcript || [])"
             :key="index"
@@ -452,8 +459,9 @@ watch(() => props.summary, (next) => {
             No transcript lines yet.
           </p>
         </div>
-
-        <div v-if="activeTab === 'next-steps'" class="space-y-2 px-3 py-3">
+          </div>
+          <div class="col-start-1 row-start-1 min-h-0" :class="{ 'invisible pointer-events-none': activeTab !== 'next-steps', 'z-10': activeTab === 'next-steps' }">
+        <div class="space-y-2 px-3 py-3">
           <div
             v-for="(step, index) in props.summary?.nextSteps || []"
             :key="index"
@@ -479,6 +487,8 @@ watch(() => props.summary, (next) => {
           <p v-if="!(props.summary?.nextSteps?.length)" class="text-sm text-slate-500 dark:text-slate-300">
             No next steps provided.
           </p>
+        </div>
+          </div>
         </div>
       </div>
 
