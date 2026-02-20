@@ -379,7 +379,7 @@ const VISHING_POLL_TIMEOUT_MS = 600000
 const VISHING_STATUS_FETCH_TIMEOUT_MS = 35000
 
 const DEEPFAKE_POLL_INTERVAL_MS  = 10_000   // 10 saniye — render 1-2dk sürer
-const DEEPFAKE_POLL_TIMEOUT_MS   = 300_000  // 5 dakika max
+const DEEPFAKE_POLL_TIMEOUT_MS   = 600_000  // 10 dakika max
 
 const deepfakePollingTimers      = new Map<string, ReturnType<typeof setInterval>>()
 const deepfakePollingStartedAt   = new Map<string, number>()
@@ -390,6 +390,7 @@ const deepfakeStatusByVideoId    = ref<Map<string, {
   videoUrl: string | null
   thumbnailUrl: string | null
   durationSec: number | null
+  errorMessage: string | null
 }>>(new Map())
 
 const vishingPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
@@ -841,7 +842,7 @@ const pollDeepfakeStatus = async (videoId: string) => {
   if (Date.now() - startedAt >= DEEPFAKE_POLL_TIMEOUT_MS) {
     console.warn('[deepfake-ui] poll timeout reached', { videoId, timeoutMs: DEEPFAKE_POLL_TIMEOUT_MS })
     const next = new Map(deepfakeStatusByVideoId.value)
-    next.set(videoId, { videoId, status: 'failed', videoUrl: null, thumbnailUrl: null, durationSec: null })
+    next.set(videoId, { videoId, status: 'failed', videoUrl: null, thumbnailUrl: null, durationSec: null, errorMessage: 'Generation timed out after 10 minutes.' })
     deepfakeStatusByVideoId.value = next
     stopDeepfakePolling(videoId)
     return
@@ -860,12 +861,14 @@ const pollDeepfakeStatus = async (videoId: string) => {
       videoUrl: string | null
       thumbnailUrl: string | null
       durationSec: number | null
+      error?: string | null
     }>(statusUrl)
 
     console.log('[deepfake-ui] poll response', {
       videoId,
       status: response.status,
-      hasVideoUrl: Boolean(response.videoUrl)
+      hasVideoUrl: Boolean(response.videoUrl),
+      error: response.error
     })
 
     const next = new Map(deepfakeStatusByVideoId.value)
@@ -875,6 +878,7 @@ const pollDeepfakeStatus = async (videoId: string) => {
       videoUrl:     response.videoUrl ?? null,
       thumbnailUrl: response.thumbnailUrl ?? null,
       durationSec:  response.durationSec ?? null,
+      errorMessage: response.error ?? null,
     })
     deepfakeStatusByVideoId.value = next
 
@@ -882,8 +886,20 @@ const pollDeepfakeStatus = async (videoId: string) => {
       console.log('[deepfake-ui] terminal status reached, stopping poll', { videoId, status: response.status })
       stopDeepfakePolling(videoId)
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('[deepfake-ui] poll error', { videoId, err })
+    const errMsg = err?.message || err?.statusMessage || String(err)
+    const next = new Map(deepfakeStatusByVideoId.value)
+    next.set(videoId, {
+      videoId,
+      status:       'failed',
+      videoUrl:     null,
+      thumbnailUrl: null,
+      durationSec:  null,
+      errorMessage: errMsg || 'Failed to fetch video status.',
+    })
+    deepfakeStatusByVideoId.value = next
+    stopDeepfakePolling(videoId)
   } finally {
     deepfakePollingInFlight.delete(videoId)
   }
@@ -912,6 +928,7 @@ const processDeepfakeSignal = (message: any) => {
       videoUrl:     null,
       thumbnailUrl: null,
       durationSec:  null,
+      errorMessage: null,
     })
     deepfakeStatusByVideoId.value = next
   }
@@ -926,6 +943,7 @@ const deepfakeUiByMessageId = computed(() => {
     videoUrl: string | null
     thumbnailUrl: string | null
     durationSec: number | null
+    errorMessage: string | null
   } | null>()
 
   for (const message of messages.value) {
@@ -941,6 +959,7 @@ const deepfakeUiByMessageId = computed(() => {
       videoUrl:     null,
       thumbnailUrl: null,
       durationSec:  null,
+      errorMessage: null,
     })
   }
 
@@ -1189,6 +1208,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
                   :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
                   :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
+                  :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"
                 />
                 <!-- Reasoning (shown above content, also during streaming) -->
                 <ReasoningSection :reasoning="message.reasoning" />

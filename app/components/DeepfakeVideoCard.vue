@@ -7,6 +7,7 @@ const props = defineProps<{
   videoUrl: string | null
   thumbnailUrl: string | null
   durationSec: number | null
+  errorMessage?: string | null
 }>()
 
 const isTerminal = computed(() =>
@@ -78,12 +79,17 @@ const statusLabel = computed(() => {
       <!-- Error State -->
       <div
         v-if="status === 'failed'"
-        class="mt-3 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20"
+        class="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20"
       >
-        <UIcon name="i-lucide-triangle-alert" class="h-5 w-5 text-red-500 shrink-0" />
-        <p class="text-sm text-red-700 dark:text-red-300">
-          Video generation failed. Please try again.
-        </p>
+        <UIcon name="i-lucide-triangle-alert" class="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-red-700 dark:text-red-300">
+            Video generation failed. Please try again.
+          </p>
+          <p v-if="errorMessage" class="mt-1 text-xs text-red-600 dark:text-red-400 break-words">
+            {{ errorMessage }}
+          </p>
+        </div>
       </div>
     </div>
   </div>

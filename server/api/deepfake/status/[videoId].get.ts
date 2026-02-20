@@ -121,13 +121,20 @@ export default defineEventHandler(async (event) => {
     thumbnailUrl: string | null
     durationSec: number | null
     error?: string
+    failureCode?: string
+    failureReason?: string
   }
+
+  // Fleet Agent uses failureReason; fallback to error for backwards compatibility
+  const errorMessage = data.failureReason ?? data.error ?? null
 
   console.log('[deepfake-api] success', {
     chatId,
     videoId,
     status: data.status,
-    hasVideoUrl: Boolean(data.videoUrl)
+    hasVideoUrl: Boolean(data.videoUrl),
+    failureCode: data.failureCode,
+    hasFailureReason: Boolean(data.failureReason)
   })
 
   return {
@@ -136,6 +143,7 @@ export default defineEventHandler(async (event) => {
     status:       data.status || 'processing',
     videoUrl:     data.videoUrl ?? null,
     thumbnailUrl: data.thumbnailUrl ?? null,
-    durationSec:  data.durationSec ?? null
+    durationSec:  data.durationSec ?? null,
+    error:        errorMessage
   }
 })
