@@ -133,16 +133,121 @@ onMounted(() => {
     },
   })
 
+  const PHISHING_URL_TAG = '{PHISHINGURL}'
+
+  const getLinkComponent = (comp: any) => {
+    if (!comp) return null
+    if (comp.get?.('tagName') === 'a' || comp.get?.('type') === 'link') return comp
+    return comp.findFirstType?.('link') ?? comp.findType?.('link')?.[0] ?? null
+  }
+
+  editor.Traits.addType('link-url', {
+    eventCapture: ['input', 'change'],
+    createInput() {
+      const el = document.createElement('input')
+      el.type = 'text'
+      el.className = 'gjs-field'
+      el.placeholder = 'eg. https://google.com'
+      el.setAttribute('data-link-url', '')
+      return el
+    },
+    onEvent({ elInput, component }) {
+      const input = elInput.querySelector?.('[data-link-url]') || elInput
+      const value = (input as HTMLInputElement)?.value ?? ''
+      const linkComp = getLinkComponent(component)
+      if (linkComp) linkComp.addAttributes({ href: value })
+    },
+    onUpdate({ elInput, component }) {
+      const linkComp = getLinkComponent(component)
+      const href = linkComp?.getAttributes?.()?.href || ''
+      const input = elInput.querySelector?.('[data-link-url]') || elInput
+      if (input) (input as HTMLInputElement).value = href || ''
+    }
+  })
+
+  editor.Traits.addType('merge-tags', {
+    createInput() {
+      const el = document.createElement('div')
+      el.className = 'gjs-field gjs-select'
+      el.innerHTML = `
+        <select class="merge-tags-select" data-merge-tags>
+          <option value="">No Merged Text</option>
+          <option value="${PHISHING_URL_TAG}">Phishing Url</option>
+        </select>
+      `
+      return el
+    },
+    onEvent({ elInput, component }) {
+      const select = elInput.querySelector('[data-merge-tags]')
+      const value = select?.value || ''
+      const linkComp = getLinkComponent(component)
+      if (linkComp) {
+        linkComp.addAttributes({ href: value })
+        // Sync Url field: trigger trait manager refresh so link-url trait updates
+        const tm = editor.TraitManager ?? editor.Traits
+        if (typeof tm?.render === 'function') tm.render()
+      }
+    },
+    onUpdate({ elInput, component }) {
+      const linkComp = getLinkComponent(component)
+      const href = linkComp?.getAttributes?.()?.href || component.getAttributes?.()?.href || ''
+      const select = elInput.querySelector('[data-merge-tags]')
+      if (select) (select as HTMLSelectElement).value = href === PHISHING_URL_TAG ? PHISHING_URL_TAG : ''
+    }
+  })
+
+  const mergeTagsTrait = { type: 'merge-tags', name: 'merge-tags', label: 'Merge Tags' }
+  const urlTrait = { type: 'link-url', name: 'link-url', label: 'Url' }
+
+  // Extend link component: add Merge Tags + Url (for email type only)
+  if (props.type === 'email') {
+    editor.DomComponents.addType('link', {
+      extend: 'link',
+      model: {
+        defaults: {
+          traits: [
+            { type: 'text', name: 'title', label: 'Title', placeholder: 'eg. Text here' },
+            { type: 'text', name: 'href', label: 'Url', placeholder: 'eg. https://google.com' },
+            { type: 'select', name: 'target', label: 'Target', options: [
+              { id: '_self', label: 'This Window' },
+              { id: '_blank', label: 'New Window' }
+            ]},
+            mergeTagsTrait
+          ]
+        }
+      }
+    } as any)
+
+    // Extend text component: Url + Merge Tags only when link inside
+    editor.DomComponents.addType('text', {
+      extend: 'text',
+      model: {
+        defaults: {
+          traits(component: any) {
+            const base = ['id', 'title']
+            return getLinkComponent(component) ? [...base, urlTrait, mergeTagsTrait] : base
+          }
+        }
+      }
+    } as any)
+  }
+
   // Register custom 'table-cell' component type for editable TD elements
   editor.DomComponents.addType('table-cell', {
     model: {
       defaults: {
         tagName: 'td',
         editable: true,
-        draggable: false,  // Prevent table structure breaking
+        draggable: false,
         droppable: false,
         resizable: false,
         selectable: true,
+        ...(props.type === 'email' ? {
+          traits(component: any) {
+            const base = ['id', 'title']
+            return getLinkComponent(component) ? [...base, urlTrait, mergeTagsTrait] : base
+          }
+        } : {})
       } as any
     },
     view: {} as any
@@ -157,6 +262,10 @@ onMounted(() => {
     const parseCells = (obj: any) => {
       if (obj.tagName === 'td' || obj.tagName === 'th') {
         obj.type = 'table-cell'
+      }
+      // Ensure <a> elements are recognized as link, not text
+      if (obj.tagName === 'a') {
+        obj.type = 'link'
       }
       if (obj.components) {
         ;(obj.components as any[]).forEach(parseCells)

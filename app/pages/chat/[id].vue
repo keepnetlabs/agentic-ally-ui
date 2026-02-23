@@ -1200,16 +1200,6 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   @create-next-step="handleCreateVishingNextStep"
                 />
 
-                <!-- Deepfake Video UI -->
-                <DeepfakeVideoCard
-                  v-if="deepfakeUiByMessageId.get(message.id)"
-                  :video-id="deepfakeUiByMessageId.get(message.id)?.videoId || ''"
-                  :status="deepfakeUiByMessageId.get(message.id)?.status || 'processing'"
-                  :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
-                  :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
-                  :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
-                  :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"
-                />
                 <!-- Reasoning (shown above content, also during streaming) -->
                 <ReasoningSection :reasoning="message.reasoning" />
 
@@ -1236,6 +1226,17 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
                   :summary="vishingUiByMessageId.get(message.id)?.summary || null"
                   @create-next-step="handleCreateVishingNextStep"
+                />
+
+                <!-- Deepfake Video UI (below message text, like Vishing) -->
+                <DeepfakeVideoCard
+                  v-if="deepfakeUiByMessageId.get(message.id)"
+                  :video-id="deepfakeUiByMessageId.get(message.id)?.videoId || ''"
+                  :status="deepfakeUiByMessageId.get(message.id)?.status || 'processing'"
+                  :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
+                  :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
+                  :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
+                  :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"
                 />
               </template>
             </UChatMessages>

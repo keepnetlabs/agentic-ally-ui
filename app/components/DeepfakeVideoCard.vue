@@ -57,7 +57,7 @@ const statusLabel = computed(() => {
             Video is being generated...
           </p>
           <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-300">
-            This usually takes 1–2 minutes.
+            This usually takes 5–10 minutes.
           </p>
         </div>
       </div>
