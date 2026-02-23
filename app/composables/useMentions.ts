@@ -1,5 +1,6 @@
 import { ref, nextTick, onMounted, onBeforeUnmount, type Ref } from 'vue'
 import { buildTargetGroupTag, buildTargetUserTag, getEmailInitials, getNameInitials } from '../utils/mention-utils'
+import { getPromptInputElement } from '../utils/prompt-utils'
 
 export type MentionUser = {
   id: string
@@ -54,13 +55,7 @@ export const useMentions = ({
   const mentionListRef = ref<HTMLElement | null>(null)
   let mentionSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-  const getPromptInput = () => {
-    const element = (promptRef.value as { $el?: HTMLElement } | null)?.$el
-    if (!element) {
-      return null
-    }
-    return element.querySelector('textarea, input') as HTMLTextAreaElement | HTMLInputElement | null
-  }
+  const getPromptInput = () => getPromptInputElement(promptRef)
 
   const closeMentionMenu = () => {
     if (mentionSearchTimeout) {

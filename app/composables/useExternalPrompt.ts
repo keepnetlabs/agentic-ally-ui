@@ -1,4 +1,5 @@
 import { nextTick, onBeforeUnmount, onMounted, type Ref } from 'vue'
+import { getPromptInputElement } from '../utils/prompt-utils'
 
 type UseExternalPromptOptions = {
   input: Ref<string>
@@ -33,11 +34,8 @@ export const useExternalPrompt = ({ input, promptRef, onSend }: UseExternalPromp
     }
 
     nextTick(() => {
-      const element = (promptRef.value as { $el?: HTMLElement } | null)?.$el
-      const inputEl = element?.querySelector('textarea, input') as HTMLTextAreaElement | HTMLInputElement | null
-      if (!inputEl) {
-        return
-      }
+      const inputEl = getPromptInputElement(promptRef)
+      if (!inputEl) return
       inputEl.focus()
       inputEl.setSelectionRange(input.value.length, input.value.length)
     })

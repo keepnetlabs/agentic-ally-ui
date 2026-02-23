@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
 // @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
@@ -12,6 +12,7 @@ import { useRouteParams } from '../../composables/useRouteParams'
 import { useAuthToken } from '../../composables/useAuthToken'
 import { useSecureApi } from '../../composables/useSecureApi'
 import { parseError } from '../../utils/error-handler'
+import { getPromptInputElement } from '../../utils/prompt-utils'
 import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
@@ -344,7 +345,7 @@ const handlePromptSubmit = () => {
 
 const handleCreateVishingNextStep = (nextStep: VishingNextStepItem) => {
   input.value = nextStep.prompt || `Create training about ${nextStep.title}`
-  promptRef.value?.focus?.()
+  nextTick(() => getPromptInputElement(promptRef)?.focus())
 }
 
 
