@@ -21,9 +21,13 @@ import {
   extractTrainingUrlFromMessage,
   extractAllPhishingEmailsFromMessage,
   extractLandingPageFromMessage,
+  extractAvatarSelectionFromMessage,
+  extractVoiceSelectionFromMessage,
   extractVishingCallStartedFromMessage,
   extractVishingCallTranscriptFromMessage,
   extractDeepfakeVideoGeneratingFromMessage,
+  type AvatarSelectionPayload,
+  type VoiceSelectionPayload,
   type VishingCallStartedPayload,
   type VishingCallTranscriptPayload,
   type VishingNextStepItem,
@@ -346,6 +350,13 @@ const handlePromptSubmit = () => {
 const handleCreateVishingNextStep = (nextStep: VishingNextStepItem) => {
   input.value = nextStep.prompt || `Create training about ${nextStep.title}`
   nextTick(() => getPromptInputElement(promptRef)?.focus())
+}
+
+const handleUiSelection = (value: string) => {
+  const choice = (value || '').trim()
+  if (!choice || status.value === 'streaming') return
+  input.value = choice
+  handlePromptSubmit()
 }
 
 
@@ -967,6 +978,22 @@ const deepfakeUiByMessageId = computed(() => {
   return result
 })
 
+const avatarSelectionByMessageId = computed(() => {
+  const result = new Map<string, AvatarSelectionPayload | null>()
+  for (const message of messages.value) {
+    result.set(message.id, extractAvatarSelectionFromMessage(message))
+  }
+  return result
+})
+
+const voiceSelectionByMessageId = computed(() => {
+  const result = new Map<string, VoiceSelectionPayload | null>()
+  for (const message of messages.value) {
+    result.set(message.id, extractVoiceSelectionFromMessage(message))
+  }
+  return result
+})
+
 const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
 
 // Wrap canvas open functions to track canvas type
@@ -1227,6 +1254,18 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
                   :summary="vishingUiByMessageId.get(message.id)?.summary || null"
                   @create-next-step="handleCreateVishingNextStep"
+                />
+
+                <AvatarSelectionCard
+                  v-if="avatarSelectionByMessageId.get(message.id)"
+                  :payload="avatarSelectionByMessageId.get(message.id)!"
+                  @select="handleUiSelection"
+                />
+
+                <VoiceSelectionCard
+                  v-if="voiceSelectionByMessageId.get(message.id)"
+                  :payload="voiceSelectionByMessageId.get(message.id)!"
+                  @select="handleUiSelection"
                 />
 
                 <!-- Deepfake Video UI (below message text, like Vishing) -->

@@ -198,10 +198,12 @@ export const useCanvasTriggers = (
 
         // Check for canvas URL signal
         if (!hasCanvasOpenedForCurrentMessage.value) {
-            const urlMatch = allText.match(/::ui:canvas_open::([^\s\n]+)/)
-            if (urlMatch && urlMatch[1]) {
+            const wrappedMatch = allText.match(/::ui:canvas_open::([\s\S]+?)::\/ui:canvas_open::/)
+            const legacyMatch = allText.match(/::ui:canvas_open::([^\s\n]+)/)
+            const canvasUrl = wrappedMatch?.[1]?.trim() || legacyMatch?.[1]?.trim()
+            if (canvasUrl) {
                 hasCanvasOpenedForCurrentMessage.value = true
-                openCanvasWithUrl(urlMatch[1])
+                openCanvasWithUrl(canvasUrl)
             }
         }
 

@@ -19,6 +19,10 @@ export type UISignalType =
   | 'vishing_call_transcript'
   | 'target_user'
   | 'target_group'
+  | 'avatar_selection'
+  | 'voice_selection'
+  | 'deepfake_video_generating'
+  | 'training_meta'
   | 'canvas_open'
 
 export interface UISignalEvent {
@@ -151,6 +155,8 @@ export interface StreamEventHandlers {
   onTargetGroup?: (payload: TargetGroupPayload) => void
   onVishingCallStarted?: (payload: StreamVishingCallStartedPayload) => void
   onVishingCallTranscript?: (payload: StreamVishingCallTranscriptPayload) => void
+  onAvatarSelection?: (payload: unknown) => void
+  onVoiceSelection?: (payload: unknown) => void
   onCanvasOpen?: (url: string) => void
   onReasoningStart?: (id: string) => void
   onReasoningDelta?: (id: string, text: string) => void
@@ -163,16 +169,17 @@ export interface StreamEventHandlers {
  * Parse UI signal payload from base64 encoded message
  */
 export function parseUISignalPayload(message: string): unknown | null {
-  // Match: ::ui:{signal}::{base64}::/ui:{signal}::
-  const regex = /::ui:\w+::([^:]+)::/
-  const match = message.match(regex)
+  // Match wrapped UI signals first
+  const wrapped = message.match(/::ui:(\w+)::([\s\S]*?)::\/ui:\1::/)
+  if (wrapped?.[1] === 'canvas_open') return null
+  const payload = wrapped?.[2] ?? message.match(/::ui:\w+::([^:]+)::/)?.[1]
 
-  if (!match || !match[1]) {
+  if (!payload) {
     return null
   }
 
   try {
-    return JSON.parse(base64ToUtf8(match[1].trim()))
+    return JSON.parse(base64ToUtf8(payload.trim()))
   } catch (e) {
     console.error('Failed to parse UI signal payload:', e)
     return null
@@ -250,10 +257,20 @@ export const useStreamEvents = (handlers: StreamEventHandlers = {}) => {
           if (payload) handlers.onVishingCallTranscript?.(payload as StreamVishingCallTranscriptPayload)
           break
 
+        case 'avatar_selection':
+          if (payload) handlers.onAvatarSelection?.(payload)
+          break
+
+        case 'voice_selection':
+          if (payload) handlers.onVoiceSelection?.(payload)
+          break
+
         case 'canvas_open':
-          // For canvas_open, the URL is in the message directly
-          const urlMatch = message.match(/::ui:canvas_open::([^\s\n]+)/)
-          if (urlMatch?.[1]) handlers.onCanvasOpen?.(urlMatch[1])
+          // canvas_open uses raw URL payload, not base64 JSON
+          const wrappedUrl = message.match(/::ui:canvas_open::([\s\S]+?)::\/ui:canvas_open::/)
+          const legacyUrl = message.match(/::ui:canvas_open::([^\s\n]+)/)
+          const url = wrappedUrl?.[1]?.trim() || legacyUrl?.[1]?.trim()
+          if (url) handlers.onCanvasOpen?.(url)
           break
       }
 

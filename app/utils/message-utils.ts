@@ -24,31 +24,35 @@ export function base64ToUtf8(base64: string): string {
 // Extract training URL from message
 // Supports both MASTRA V1 (uiSignals) and legacy (::ui:canvas_open::) formats
 export function extractTrainingUrlFromMessage(msg: any): string | null {
-    // 1️⃣ MASTRA V1: Check uiSignals first
+    const extractCanvasUrl = (text: string): string | null => {
+        if (!text) return null
+        const wrapped = text.match(/::ui:canvas_open::([\s\S]+?)::\/ui:canvas_open::/)
+        if (wrapped?.[1]) return wrapped[1].trim()
+        const legacy = text.match(/::ui:canvas_open::([^\s\n]+)/)
+        if (legacy?.[1]) return legacy[1].trim()
+        return null
+    }
+
+    // 1) MASTRA V1: Check uiSignals first
     if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
         const canvasSignal = msg.uiSignals.find((s: any) => s.signal === 'canvas_open')
         if (canvasSignal?.message) {
-            const match = canvasSignal.message.match(/::ui:canvas_open::([^\s\n]+)/)
-            if (match?.[1]) return match[1].trim()
+            const url = extractCanvasUrl(canvasSignal.message)
+            if (url) return url
         }
     }
 
-    // 2️⃣ Legacy: Check parts first (streaming)
-    // Format: ::ui:canvas_open::${trainingUrl}\n
+    // 2) Legacy: Check parts first (streaming)
     const parts = extractTextPartsForTemplate(msg)
     for (const p of parts) {
         const text = p?.delta || p?.text || ''
-        // Match ::ui:canvas_open:: followed by URL (until newline, space, or end of string)
-        const m = text.match(/::ui:canvas_open::([^\s\n]+)/)
-        if (m && m[1]) {
-            // Trim any trailing whitespace/newline that might have been captured
-            return m[1].trim()
-        }
+        const url = extractCanvasUrl(text)
+        if (url) return url
     }
+
     // Fallback: check final content
     const content = (msg?.content || '') + ''
-    const mc = content.match(/::ui:canvas_open::([^\s\n]+)/)
-    return mc && mc[1] ? mc[1].trim() : null
+    return extractCanvasUrl(content)
 }
 
 // Extract landing page from message
@@ -228,6 +232,31 @@ export interface VishingConversationSummaryPayload {
     statusCard?: VishingStatusCard
 }
 
+export interface AvatarSelectionPayload {
+    avatars: Array<{
+        avatar_id: string
+        avatar_name: string
+        gender?: string
+        preview_image_url?: string
+        preview_video_url?: string
+    }>
+    total: number
+}
+
+export interface VoiceSelectionPayload {
+    voices: Array<{
+        voice_id: string
+        name: string
+        language?: string
+        gender?: string
+        preview_audio?: string
+        emotion_support?: boolean
+    }>
+    total: number
+    requestedLanguage: string | null
+    warning: string | null
+}
+
 // Extract vishing call started signal from message
 // Supports both MASTRA V1 (uiSignals) and legacy (::ui:vishing_call_started::) formats
 export function extractVishingCallStartedFromMessage(msg: any): VishingCallStartedPayload | null {
@@ -316,8 +345,11 @@ export function extractVishingCallTranscriptFromMessage(msg: any): VishingCallTr
 export function getSanitizedContentForTemplate(msg: any): string {
     const content = (msg?.content || '') + ''
     return content
+        .replace(/::ui:canvas_open::([\s\S]+?)::\/ui:canvas_open::/g, '')
         .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
         .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
+        .replace(/::ui:avatar_selection::([\s\S]+?)::\/ui:avatar_selection::/g, '')
+        .replace(/::ui:voice_selection::([\s\S]+?)::\/ui:voice_selection::/g, '')
         .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
         .replace(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/g, '')
@@ -379,8 +411,11 @@ export function extractSmishingLandingPageFromMessage(msg: any): any | null {
 export function getSanitizedTitle(rawTitle: string): string {
     const content = (rawTitle || '') + ''
     return content
+        .replace(/::ui:canvas_open::([\s\S]+?)::\/ui:canvas_open::/g, '')
         .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
         .replace(/::ui:training_meta::([\s\S]+?)::\/ui:training_meta::/g, '')
+        .replace(/::ui:avatar_selection::([\s\S]+?)::\/ui:avatar_selection::/g, '')
+        .replace(/::ui:voice_selection::([\s\S]+?)::\/ui:voice_selection::/g, '')
         .replace(/::ui:phishing_email::([\s\S]+?)::\/ui:phishing_email::/g, '')
         .replace(/::ui:landing_page::([\s\S]+?)::\/ui:landing_page::/g, '')
         .replace(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/g, '')
@@ -437,6 +472,45 @@ export function extractDeepfakeVideoGeneratingFromMessage(
     }
 
     return null
+}
+
+function extractSignalPayloadFromMessage<T>(msg: any, signal: string): T | null {
+    const extractAndDecode = (text: string): T | null => {
+        const pattern = new RegExp(`::ui:${signal}::([\\s\\S]+?)::\\/ui:${signal}::`)
+        const match = text.match(pattern)
+        if (!match?.[1]) return null
+        try {
+            return JSON.parse(base64ToUtf8(match[1].trim()))
+        } catch {
+            return null
+        }
+    }
+
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const uiSignal = msg.uiSignals.find((s: any) => s.signal === signal)
+        if (uiSignal?.message) {
+            const parsed = extractAndDecode(uiSignal.message)
+            if (parsed) return parsed
+        }
+    }
+
+    const parts = extractTextPartsForTemplate(msg)
+    for (const part of parts) {
+        const text = part?.delta || part?.text || ''
+        const parsed = extractAndDecode(text)
+        if (parsed) return parsed
+    }
+
+    const content = (msg?.content || '') + ''
+    return extractAndDecode(content)
+}
+
+export function extractAvatarSelectionFromMessage(msg: any): AvatarSelectionPayload | null {
+    return extractSignalPayloadFromMessage<AvatarSelectionPayload>(msg, 'avatar_selection')
+}
+
+export function extractVoiceSelectionFromMessage(msg: any): VoiceSelectionPayload | null {
+    return extractSignalPayloadFromMessage<VoiceSelectionPayload>(msg, 'voice_selection')
 }
 
 // Show message content in canvas (URL, email, code, or preview)
@@ -503,4 +577,5 @@ export function showInCanvas(canvasRef: any, content: string) {
         })
     }
 }
+
 
