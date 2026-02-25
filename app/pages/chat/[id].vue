@@ -17,6 +17,7 @@ import { Chat } from '@ai-sdk/vue'
 import { DefaultChatTransport } from 'ai'
 import { useClipboard } from '@vueuse/core'
 import { parseAIMessage, parseAIReasoning } from '../../utils/text-utils'
+import { useUiSignalsSync } from '../../composables/useUiSignalsSync'
 import {
   extractTrainingUrlFromMessage,
   extractAllPhishingEmailsFromMessage,
@@ -299,6 +300,7 @@ const chatClient = new Chat({
 const messagesVersion = ref(0)
 // MASTRA V1: Store UI signals separately (reactive Map by message ID)
 const uiSignalsMap = ref<Map<string, any[]>>(new Map())
+const { updateUiSignalsFromContent } = useUiSignalsSync(uiSignalsMap.value, messagesVersion)
 
 const baseMessages = createMessages(chatClient, parseAIReasoning, parseAIMessage, messagesVersion)
 
@@ -1147,6 +1149,8 @@ watch(
 )
 
 function handleCanvasRefresh(messageId: string, newContent: string) {
+  updateUiSignalsFromContent(messageId, newContent)
+
   // Update chat.value messages
   if (chat.value?.messages) {
     const message = chat.value.messages.find((m: any) => m.id === messageId)
