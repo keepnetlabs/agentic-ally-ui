@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{
   videoId: string
   status: string
   videoUrl: string | null
+  videoUrlCaption: string | null
   thumbnailUrl: string | null
   durationSec: number | null
   errorMessage?: string | null
@@ -15,6 +16,17 @@ const isTerminal = computed(() =>
 )
 
 const isCompleted = computed(() => props.status === 'completed')
+
+const hasCaptionOption = computed(() =>
+  Boolean(props.videoUrl && props.videoUrlCaption)
+)
+
+const showCaptions = ref(true)
+
+const activeSrc = computed(() => {
+  if (showCaptions.value && props.videoUrlCaption) return props.videoUrlCaption
+  return props.videoUrl
+})
 
 const statusLabel = computed(() => {
   switch (props.status) {
@@ -37,13 +49,27 @@ const statusLabel = computed(() => {
           <UIcon name="i-lucide-video" class="h-4 w-4" />
           <span class="text-sm font-medium">Deepfake Video</span>
         </div>
-        <UBadge
-          :color="isCompleted ? 'success' : status === 'failed' ? 'error' : 'warning'"
-          variant="soft"
-          size="xs"
-        >
-          {{ statusLabel }}
-        </UBadge>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="hasCaptionOption"
+            type="button"
+            class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+            :class="showCaptions
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+              : 'bg-slate-100 text-slate-500 dark:bg-gray-800 dark:text-slate-400'"
+            @click="showCaptions = !showCaptions"
+          >
+            <UIcon name="i-lucide-subtitles" class="h-3.5 w-3.5" />
+            {{ showCaptions ? 'CC On' : 'CC Off' }}
+          </button>
+          <UBadge
+            :color="isCompleted ? 'success' : status === 'failed' ? 'error' : 'warning'"
+            variant="soft"
+            size="xs"
+          >
+            {{ statusLabel }}
+          </UBadge>
+        </div>
       </div>
 
       <!-- Loading State -->
@@ -64,11 +90,12 @@ const statusLabel = computed(() => {
 
       <!-- Video Player (completed) -->
       <div
-        v-if="isCompleted && videoUrl"
+        v-if="isCompleted && activeSrc"
         class="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-black dark:border-gray-700"
       >
         <video
-          :src="videoUrl"
+          :key="activeSrc"
+          :src="activeSrc"
           :poster="thumbnailUrl || undefined"
           controls
           class="w-full max-h-96"

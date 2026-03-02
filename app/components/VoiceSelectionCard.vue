@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
+
+const PAGE_SIZE = 12
 
 type VoiceItem = {
   voice_id: string
@@ -26,18 +28,37 @@ const emit = defineEmits<{
 const isAutoSelected = computed(() => props.payload.total === 1)
 const playingId = ref<string | null>(null)
 const audioRefs = new Map<string, HTMLAudioElement>()
+const currentPage = ref(1)
+const cardEl = useTemplateRef<HTMLDivElement>('card')
+
+watch(currentPage, () => {
+  playingId.value = null
+  cardEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
+
+const voicesWithPreview = computed(() =>
+  (props.payload.voices || []).filter(v => v.preview_audio)
+)
+const totalVoices = computed(() => voicesWithPreview.value.length)
+const totalPages = computed(() => Math.ceil(totalVoices.value / PAGE_SIZE))
+
+const paginatedVoices = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return voicesWithPreview.value.slice(start, start + PAGE_SIZE)
+})
 
 const getVoiceKey = (voice: VoiceItem, index: number) => voice.voice_id || `voice-${index}`
 
 const submitSelection = (voice: VoiceItem, index: number) => {
   if (isAutoSelected.value) return
   const fallback = String(index + 1)
-  emit('select', voice.name?.trim() || fallback)
+  emit('select', `Voice: ${voice.name?.trim() || fallback}`)
 }
 
-const setAudioRef = (id: string, el: HTMLAudioElement | null) => {
-  if (el) {
-    audioRefs.set(id, el)
+const setAudioRef = (id: string, el: unknown) => {
+  const audio = el as HTMLAudioElement | null
+  if (audio) {
+    audioRefs.set(id, audio)
     return
   }
   audioRefs.delete(id)
@@ -76,7 +97,7 @@ const onAudioEnded = (id: string) => {
 </script>
 
 <template>
-  <div class="mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-gray-700 dark:bg-gray-950">
+  <div ref="card" class="mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-gray-700 dark:bg-gray-950">
     <div class="px-3 py-2.5 md:px-5 md:py-4">
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 text-slate-700 dark:text-slate-200">
@@ -97,7 +118,7 @@ const onAudioEnded = (id: string) => {
 
       <div class="mt-2.5 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
         <div
-          v-for="(voice, index) in payload.voices"
+          v-for="(voice, index) in paginatedVoices"
           :key="getVoiceKey(voice, index)"
           class="rounded-lg border border-slate-200 bg-white p-2 transition hover:border-slate-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-500"
         >
@@ -116,7 +137,7 @@ const onAudioEnded = (id: string) => {
 
           <audio
             v-if="voice.preview_audio"
-            :ref="(el) => setAudioRef(getVoiceKey(voice, index), el as HTMLAudioElement | null)"
+            :ref="(el) => setAudioRef(getVoiceKey(voice, index), el)"
             :src="voice.preview_audio"
             preload="none"
             class="hidden"
@@ -139,13 +160,20 @@ const onAudioEnded = (id: string) => {
               color="primary"
               variant="soft"
               class="flex-1"
-              @click="submitSelection(voice, index)"
+              @click="submitSelection(voice, (currentPage - 1) * PAGE_SIZE + index)"
             >
               Select
             </UButton>
             <UBadge v-else color="success" variant="soft" size="xs">Auto</UBadge>
           </div>
         </div>
+      </div>
+
+      <div v-if="totalPages > 1" class="mt-3 flex items-center justify-between gap-2">
+        <span class="text-[11px] text-slate-500 dark:text-slate-400">
+          Page {{ currentPage }} / {{ totalPages }} · {{ totalVoices }} voices
+        </span>
+        <UPagination v-model:page="currentPage" :total="totalVoices" :items-per-page="PAGE_SIZE" size="xs" />
       </div>
     </div>
   </div>

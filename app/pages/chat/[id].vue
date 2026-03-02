@@ -116,11 +116,12 @@ const saveMessageWithRetry = async (
       console.error('Message save deadline exceeded after', attempt, 'attempts')
       const { title, message, icon } = parseError(error)
       toast.add({
+        id: 'message-save-error',
         title: 'Failed to save message',
         description: `${message} (timeout after ${attempt} attempts)`,
         icon,
         color: 'error',
-        duration: 0
+        duration: 15000
       })
       return false
     }
@@ -130,11 +131,12 @@ const saveMessageWithRetry = async (
       console.error('Max retries exceeded for message save')
       const { title, message, icon } = parseError(error)
       toast.add({
+        id: 'message-save-error',
         title: 'Failed to save message',
         description: `${message} (${maxRetries} attempts failed)`,
         icon,
         color: 'error',
-        duration: 0
+        duration: 15000
       })
       return false
     }
@@ -142,9 +144,10 @@ const saveMessageWithRetry = async (
     // Calculate backoff delay with jitter
     const delay = exponentialBackoffWithJitter(attempt)
 
-    // Show retry progress
+    // Show retry progress (same ID so each retry updates the existing toast)
     console.log(`Message save failed, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxRetries})`)
     toast.add({
+      id: 'message-save-retry',
       title: 'Retrying...',
       description: `Attempt ${attempt + 1}/${maxRetries}`,
       icon: 'i-lucide-loader',
@@ -232,6 +235,8 @@ const {
 
 useExternalPrompt({ input, promptRef })
 
+const streamSilentRetryPending = ref(false)
+
 const streamUrl = buildUrl(`/api/chats/${chatId}`)
 
 const chatClient = new Chat({
@@ -283,16 +288,49 @@ const chatClient = new Chat({
 
     // Mark finished to prevent stuck loader
     lastFinishedMessageId.value = message?.id || null
+    streamSilentRetryPending.value = false
   },
   onError(err: any) {
     console.error('Chat stream error:', err)
     const { title, message, icon, canRetry } = parseError(err)
+
+    // First failure with a retryable error: silent retry once before bothering the user
+    if (canRetry && !streamSilentRetryPending.value) {
+      streamSilentRetryPending.value = true
+      console.log('[stream-retry] Silent retry in 1.5s...')
+      setTimeout(() => {
+        if (!isComponentActive.value) return
+        chatClient.regenerate()
+      }, 1500)
+      return
+    }
+
+    // Second failure or non-retryable: show toast with a Retry action
+    streamSilentRetryPending.value = false
+
+    // Clear the stuck streaming indicator by marking the last assistant message as finished
+    const lastMsg = chatClient.messages[chatClient.messages.length - 1]
+    if (lastMsg?.role === 'assistant' && lastMsg?.id) {
+      lastFinishedMessageId.value = lastMsg.id
+    }
+
     toast.add({
+      id: 'chat-stream-error',
       title,
       description: message,
       icon,
       color: 'error',
-      duration: canRetry ? 0 : 5000
+      duration: 15000,
+      actions: canRetry ? [{
+        label: 'Retry',
+        color: 'error' as const,
+        variant: 'outline' as const,
+        onClick: () => {
+          streamSilentRetryPending.value = false
+          lastFinishedMessageId.value = null
+          chatClient.regenerate()
+        }
+      }] : []
     })
   }
 })
@@ -328,7 +366,11 @@ watch(chat, (value) => {
 const status = createStatus(chatClient)
 const error = createErrorComputed(chatClient)
 const lastFinishedMessageId = ref<string | null>(null)
-const promptStatus = computed(() => (error.value ? 'error' : status.value))
+const promptStatus = computed(() => {
+  if (error.value && !input.value) return 'error'
+  if (status.value === 'streaming') return 'streaming'
+  return 'ready'
+})
 
 const handleSubmit = createHandleSubmit(chatClient, input, messages, status, lastFinishedMessageId)
 
@@ -357,8 +399,19 @@ const handleCreateVishingNextStep = (nextStep: VishingNextStepItem) => {
 const handleUiSelection = (value: string) => {
   const choice = (value || '').trim()
   if (!choice || status.value === 'streaming') return
-  input.value = choice
-  handlePromptSubmit()
+
+  const prefix = choice.split(':')[0] + ':'
+  const lines = input.value.split('\n').filter(l => l.trim())
+
+  const existingIndex = lines.findIndex(l => l.startsWith(prefix))
+  if (existingIndex !== -1) {
+    lines[existingIndex] = choice
+  } else {
+    lines.push(choice)
+  }
+
+  input.value = lines.join('\n')
+  nextTick(() => getPromptInputElement(promptRef)?.focus())
 }
 
 
@@ -393,7 +446,7 @@ const VISHING_POLL_TIMEOUT_MS = 600000
 const VISHING_STATUS_FETCH_TIMEOUT_MS = 35000
 
 const DEEPFAKE_POLL_INTERVAL_MS  = 10_000   // 10 saniye — render 1-2dk sürer
-const DEEPFAKE_POLL_TIMEOUT_MS   = 600_000  // 10 dakika max
+const DEEPFAKE_POLL_TIMEOUT_MS   = 1_200_000 // 20 dakika max
 
 const deepfakePollingTimers      = new Map<string, ReturnType<typeof setInterval>>()
 const deepfakePollingStartedAt   = new Map<string, number>()
@@ -402,6 +455,7 @@ const deepfakeStatusByVideoId    = ref<Map<string, {
   videoId: string
   status: string
   videoUrl: string | null
+  videoUrlCaption: string | null
   thumbnailUrl: string | null
   durationSec: number | null
   errorMessage: string | null
@@ -856,7 +910,7 @@ const pollDeepfakeStatus = async (videoId: string) => {
   if (Date.now() - startedAt >= DEEPFAKE_POLL_TIMEOUT_MS) {
     console.warn('[deepfake-ui] poll timeout reached', { videoId, timeoutMs: DEEPFAKE_POLL_TIMEOUT_MS })
     const next = new Map(deepfakeStatusByVideoId.value)
-    next.set(videoId, { videoId, status: 'failed', videoUrl: null, thumbnailUrl: null, durationSec: null, errorMessage: 'Generation timed out after 10 minutes.' })
+    next.set(videoId, { videoId, status: 'failed', videoUrl: null, videoUrlCaption: null, thumbnailUrl: null, durationSec: null, errorMessage: 'Generation timed out after 20 minutes.' })
     deepfakeStatusByVideoId.value = next
     stopDeepfakePolling(videoId)
     return
@@ -873,6 +927,7 @@ const pollDeepfakeStatus = async (videoId: string) => {
       videoId: string
       status: string
       videoUrl: string | null
+      videoUrlCaption: string | null
       thumbnailUrl: string | null
       durationSec: number | null
       error?: string | null
@@ -888,11 +943,12 @@ const pollDeepfakeStatus = async (videoId: string) => {
     const next = new Map(deepfakeStatusByVideoId.value)
     next.set(videoId, {
       videoId,
-      status:       response.status ?? 'processing',
-      videoUrl:     response.videoUrl ?? null,
-      thumbnailUrl: response.thumbnailUrl ?? null,
-      durationSec:  response.durationSec ?? null,
-      errorMessage: response.error ?? null,
+      status:          response.status ?? 'processing',
+      videoUrl:        response.videoUrl ?? null,
+      videoUrlCaption: response.videoUrlCaption ?? null,
+      thumbnailUrl:    response.thumbnailUrl ?? null,
+      durationSec:     response.durationSec ?? null,
+      errorMessage:    response.error ?? null,
     })
     deepfakeStatusByVideoId.value = next
 
@@ -906,11 +962,12 @@ const pollDeepfakeStatus = async (videoId: string) => {
     const next = new Map(deepfakeStatusByVideoId.value)
     next.set(videoId, {
       videoId,
-      status:       'failed',
-      videoUrl:     null,
-      thumbnailUrl: null,
-      durationSec:  null,
-      errorMessage: errMsg || 'Failed to fetch video status.',
+      status:          'failed',
+      videoUrl:        null,
+      videoUrlCaption: null,
+      thumbnailUrl:    null,
+      durationSec:     null,
+      errorMessage:    errMsg || 'Failed to fetch video status.',
     })
     deepfakeStatusByVideoId.value = next
     stopDeepfakePolling(videoId)
@@ -937,12 +994,13 @@ const processDeepfakeSignal = (message: any) => {
   if (!deepfakeStatusByVideoId.value.has(payload.videoId)) {
     const next = new Map(deepfakeStatusByVideoId.value)
     next.set(payload.videoId, {
-      videoId:      payload.videoId,
-      status:       'processing',
-      videoUrl:     null,
-      thumbnailUrl: null,
-      durationSec:  null,
-      errorMessage: null,
+      videoId:         payload.videoId,
+      status:          'processing',
+      videoUrl:        null,
+      videoUrlCaption: null,
+      thumbnailUrl:    null,
+      durationSec:     null,
+      errorMessage:    null,
     })
     deepfakeStatusByVideoId.value = next
   }
@@ -955,6 +1013,7 @@ const deepfakeUiByMessageId = computed(() => {
     videoId: string
     status: string
     videoUrl: string | null
+    videoUrlCaption: string | null
     thumbnailUrl: string | null
     durationSec: number | null
     errorMessage: string | null
@@ -968,12 +1027,13 @@ const deepfakeUiByMessageId = computed(() => {
     }
     const polled = deepfakeStatusByVideoId.value.get(payload.videoId)
     result.set(message.id, polled ?? {
-      videoId:      payload.videoId,
-      status:       'processing',
-      videoUrl:     null,
-      thumbnailUrl: null,
-      durationSec:  null,
-      errorMessage: null,
+      videoId:         payload.videoId,
+      status:          'processing',
+      videoUrl:        null,
+      videoUrlCaption: null,
+      thumbnailUrl:    null,
+      durationSec:     null,
+      errorMessage:    null,
     })
   }
 
@@ -1278,6 +1338,7 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :video-id="deepfakeUiByMessageId.get(message.id)?.videoId || ''"
                   :status="deepfakeUiByMessageId.get(message.id)?.status || 'processing'"
                   :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
+                  :video-url-caption="deepfakeUiByMessageId.get(message.id)?.videoUrlCaption || null"
                   :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
                   :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
                   :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"

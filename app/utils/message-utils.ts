@@ -358,6 +358,7 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
         .replace(/::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
+        .replace(/::heartbeat::/g, '')
 }
 
 // Extract smishing landing page from message

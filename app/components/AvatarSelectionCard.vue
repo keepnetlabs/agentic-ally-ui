@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
+
+const PAGE_SIZE = 12
 
 type AvatarItem = {
   avatar_id: string
@@ -22,6 +24,8 @@ const emit = defineEmits<{
 
 const query = ref('')
 const isExpanded = ref(true)
+const currentPage = ref(1)
+const cardEl = useTemplateRef<HTMLDivElement>('card')
 
 const isAutoSelected = computed(() => props.payload.total === 1)
 
@@ -32,10 +36,20 @@ const filteredAvatars = computed(() => {
   return items.filter((avatar) => avatar.avatar_name?.toLowerCase().includes(q))
 })
 
-const submitSelection = (avatar: AvatarItem, index: number) => {
+const totalPages = computed(() => Math.ceil(filteredAvatars.value.length / PAGE_SIZE))
+
+const paginatedAvatars = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return filteredAvatars.value.slice(start, start + PAGE_SIZE)
+})
+
+watch(query, () => { currentPage.value = 1 })
+watch(currentPage, () => { cardEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }) })
+
+const submitSelection = (avatar: AvatarItem, globalIndex: number) => {
   if (isAutoSelected.value) return
-  const fallback = String(index + 1)
-  emit('select', avatar.avatar_name?.trim() || fallback)
+  const fallback = String(globalIndex + 1)
+  emit('select', `Avatar: ${avatar.avatar_name?.trim() || fallback}`)
 }
 
 const toggleExpanded = () => {
@@ -44,7 +58,7 @@ const toggleExpanded = () => {
 </script>
 
 <template>
-  <div class="mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-gray-700 dark:bg-gray-950">
+  <div ref="card" class="mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-gray-700 dark:bg-gray-950">
     <div class="px-3 py-2.5 md:px-5 md:py-4">
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 text-slate-700 dark:text-slate-200">
@@ -80,16 +94,16 @@ const toggleExpanded = () => {
 
       <div v-show="isExpanded" class="mt-2.5 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
         <component
-          v-for="(avatar, index) in filteredAvatars"
+          v-for="(avatar, index) in paginatedAvatars"
           :key="avatar.avatar_id || `${avatar.avatar_name}-${index}`"
           :is="isAutoSelected ? 'div' : 'button'"
           :type="isAutoSelected ? undefined : 'button'"
           class="group overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-500"
           :disabled="isAutoSelected ? undefined : false"
           :aria-label="`Select avatar ${avatar.avatar_name || index + 1}`"
-          @click="submitSelection(avatar, index)"
+          @click="submitSelection(avatar, (currentPage - 1) * PAGE_SIZE + index)"
         >
-          <div class="relative h-20 overflow-hidden rounded-md bg-slate-100 dark:bg-gray-800 md:h-24">
+          <div class="relative aspect-[3/4] overflow-hidden rounded-md bg-slate-100 dark:bg-gray-800">
             <img
               v-if="avatar.preview_image_url"
               :src="avatar.preview_image_url"
@@ -129,6 +143,12 @@ const toggleExpanded = () => {
             </UBadge>
           </div>
         </component>
+      </div>
+      <div v-show="isExpanded && totalPages > 1" class="mt-3 flex items-center justify-between gap-2">
+        <span class="text-[11px] text-slate-500 dark:text-slate-400">
+          Page {{ currentPage }} / {{ totalPages }} · {{ filteredAvatars.length }} avatars
+        </span>
+        <UPagination v-model:page="currentPage" :total="filteredAvatars.length" :items-per-page="PAGE_SIZE" size="xs" />
       </div>
     </div>
   </div>

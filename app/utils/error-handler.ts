@@ -47,18 +47,23 @@ const getErrorObject = (error: unknown): ErrorObject => {
   return (error as ErrorObject) || {}
 }
 
-// Type guards
+// Type guards — only match genuine connectivity failures.
+// Fetch API throws TypeError for real network errors; ofetch wraps with error codes.
+// CORS failures also surface as TypeError/"Failed to fetch" but are indistinguishable
+// from true offline errors by design (browser security). We accept that trade-off.
 const isNetworkError = (error: unknown): boolean => {
-  const { message } = getErrorObject(error)
-  if (!message) return false
-
-  const lowerMsg = message.toLowerCase()
-  return (
-    lowerMsg.includes('failed to fetch') ||
-    lowerMsg.includes('fetch') ||
-    lowerMsg.includes('err_internet_disconnected') ||
-    lowerMsg.includes('network')
-  )
+  if (error instanceof TypeError) {
+    const msg = error.message.toLowerCase()
+    return (
+      msg === 'failed to fetch' ||
+      msg.includes('networkerror') ||
+      msg.includes('network request failed') ||
+      msg.includes('err_internet_disconnected') ||
+      msg.includes('err_name_not_resolved')
+    )
+  }
+  const { code } = getErrorObject(error)
+  return code === 'ERR_NETWORK' || code === 'ENOTFOUND' || code === 'ECONNREFUSED'
 }
 
 const isTimeoutError = (error: unknown): boolean => {
@@ -125,13 +130,9 @@ const getErrorContext = (error: unknown): ErrorContext => {
 /**
  * Error messages mapped to error types
  *
- * NOTE: canRetry flag indicates if the operation is theoretically retryable.
- * However, for SSE streams that fail mid-stream (network, timeout during response),
- * the stream is already closed by the time the error fires. Automatic retry is not
- * possible - user must explicitly click "Reload" to regenerate the message.
- *
- * canRetry: true  → persistent toast (no auto-dismiss) to encourage manual retry
- * canRetry: false → auto-dismiss toast (5s) for non-retryable errors
+ * canRetry drives the UI behaviour in chat/[id].vue:
+ *   true  → 1 silent retry attempt, then 15s toast with "Retry" action button
+ *   false → 5s auto-dismiss toast (no retry offered)
  */
 const errorMessages: Record<ErrorType, Omit<ErrorDisplay, 'canRetry'> & { canRetry: boolean }> = {
   network: {

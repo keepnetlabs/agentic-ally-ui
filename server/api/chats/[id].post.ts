@@ -18,12 +18,13 @@ const cleanMetadata = (obj: any) => {
   const metadataPattern = /::ui:training_meta::[\s\S]*?:\/ui:training_meta::/g
   // Hide specific UI signals (handles both single tags and wrapped content)
   const signalsPattern = /::ui:(training_uploaded|phishing_uploaded|training_assigned|phishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g
+  const heartbeatPattern = /::heartbeat::/g
 
   if (obj.text) {
-    obj.text = obj.text.replace(metadataPattern, '').replace(signalsPattern, '')
+    obj.text = obj.text.replace(metadataPattern, '').replace(signalsPattern, '').replace(heartbeatPattern, '')
   }
   if (obj.delta) {
-    obj.delta = obj.delta.replace(metadataPattern, '').replace(signalsPattern, '')
+    obj.delta = obj.delta.replace(metadataPattern, '').replace(signalsPattern, '').replace(heartbeatPattern, '')
   }
   return obj
 }
@@ -349,7 +350,46 @@ export default defineEventHandler(async (event) => {
       .pipeThrough(transform)
       .pipeThrough(new TextEncoderStream())
 
-    return sendStream(event, encoded)
+    // SSE keepalive: inject comment lines when upstream is idle to prevent
+    // Cloudflare proxy / browser from dropping the connection (~100s idle timeout).
+    const HEARTBEAT_INTERVAL_MS = 30_000
+    const HEARTBEAT_BYTES = new TextEncoder().encode(': heartbeat\n\n')
+
+    const withHeartbeat = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const reader = encoded.getReader()
+        let timer: ReturnType<typeof setInterval> | null = null
+
+        const resetTimer = () => {
+          if (timer) clearInterval(timer)
+          timer = setInterval(() => {
+            try {
+              controller.enqueue(HEARTBEAT_BYTES)
+            } catch {
+              if (timer) clearInterval(timer)
+            }
+          }, HEARTBEAT_INTERVAL_MS)
+        }
+
+        resetTimer()
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            controller.enqueue(value)
+            resetTimer()
+          }
+          controller.close()
+        } catch (err) {
+          controller.error(err)
+        } finally {
+          if (timer) clearInterval(timer)
+        }
+      }
+    })
+
+    return sendStream(event, withHeartbeat)
   } catch (error: any) {
     console.error('Fleet Agent fetch error:', error)
     const statusCode = error?.statusCode ? String(error.statusCode) : 'none'

@@ -118,6 +118,7 @@ export default defineEventHandler(async (event) => {
     videoId: string
     status: string
     videoUrl: string | null
+    videoUrlCaption: string | null
     thumbnailUrl: string | null
     durationSec: number | null
     error?: string
@@ -138,12 +139,13 @@ export default defineEventHandler(async (event) => {
   })
 
   return {
-    success:      data.success ?? true,
-    videoId:      data.videoId || videoId,
-    status:       data.status || 'processing',
-    videoUrl:     data.videoUrl ?? null,
-    thumbnailUrl: data.thumbnailUrl ?? null,
-    durationSec:  data.durationSec ?? null,
-    error:        errorMessage
+    success:         data.success ?? true,
+    videoId:         data.videoId || videoId,
+    status:          data.status || 'processing',
+    videoUrl:        data.videoUrl ?? null,
+    videoUrlCaption: data.videoUrlCaption ?? null,
+    thumbnailUrl:    data.thumbnailUrl ?? null,
+    durationSec:     data.durationSec ?? null,
+    error:           errorMessage
   }
 })
