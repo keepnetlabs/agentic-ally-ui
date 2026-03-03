@@ -2,6 +2,11 @@ import { resolveChatUserId } from '../utils/iframe-auth'
 
 export default defineEventHandler(async (event) => {
   const { prompt } = await readBody(event)
+
+  if (!prompt || typeof prompt !== 'string') {
+    throw createError({ statusCode: 400, statusMessage: 'prompt is required' })
+  }
+
   const db = useDrizzle()
 
   const userId = await resolveChatUserId(event)

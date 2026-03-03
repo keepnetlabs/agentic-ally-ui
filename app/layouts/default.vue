@@ -87,15 +87,14 @@ onNuxtReady(async () => {
     return
   }
   const first10 = (chats.value || []).slice(0, 10)
-  for (const chat of first10) {
-    // prefetch the chat and let the browser cache it
+  await Promise.allSettled(first10.map((chat) => {
     const prefetchUrl = buildUrl(`/api/chats/${chat.id}`)
-    await $fetch(prefetchUrl, {
+    return $fetch(prefetchUrl, {
       headers: {
         ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {})
       }
     })
-  }
+  }))
 })
 
 watch(isCanvasVisible, (newValue) => {
@@ -106,15 +105,20 @@ watch(isCanvasVisible, (newValue) => {
   }
 })
 
-onMounted(() => {
-  window.addEventListener('message', (event) => {
-    if (event.data.type === 'FULLWIDTH_TOGGLE') {
-      const { data } = event
-      if (!data.isFullWidth) {
-        hideCanvas()
-      }
+const handleMessage = (event: MessageEvent) => {
+  if (event.data?.type === 'FULLWIDTH_TOGGLE') {
+    if (!event.data.isFullWidth) {
+      hideCanvas()
     }
-  })
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('message', handleMessage)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('message', handleMessage)
 })
 
 const { groups } = useChats(chats)
@@ -152,19 +156,28 @@ async function deleteChat(id: string) {
     return
   }
 
-  const deleteUrl = buildUrl(`/api/chats/${id}`)
-  await secureFetch(deleteUrl, { method: 'DELETE' })
+  try {
+    const deleteUrl = buildUrl(`/api/chats/${id}`)
+    await secureFetch(deleteUrl, { method: 'DELETE' })
 
-  toast.add({
-    title: 'Chat deleted',
-    description: 'Your chat has been deleted',
-    icon: 'i-lucide-trash'
-  })
+    toast.add({
+      title: 'Chat deleted',
+      description: 'Your chat has been deleted',
+      icon: 'i-lucide-trash'
+    })
 
-  refreshChats()
+    refreshChats()
 
-  if (route.params.id === id) {
-    navigateTo(homeUrl.value)
+    if (route.params.id === id) {
+      navigateTo(homeUrl.value)
+    }
+  } catch {
+    toast.add({
+      title: 'Failed to delete chat',
+      description: 'Please try again.',
+      icon: 'i-lucide-alert-circle',
+      color: 'error'
+    })
   }
 }
 

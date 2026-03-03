@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
     chatId: id as string,
     role,
     content
-  })
+  }).onConflictDoNothing()
 
   console.log('Message inserted successfully:', result)
   return { success: true }

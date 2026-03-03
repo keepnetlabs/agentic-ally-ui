@@ -1,9 +1,11 @@
 import { useAuthToken } from './useAuthToken'
+import { parseError } from '../utils/error-handler'
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export const useAuthTokenExchange = () => {
   const { setToken, clearToken } = useAuthToken()
+  const toast = useToast()
 
   const exchangeAuthToken = async (code: string, baseApiUrl: string) => {
     const attemptExchange = async () => {
@@ -37,6 +39,13 @@ export const useAuthTokenExchange = () => {
     } catch (error) {
       console.error('Token exchange failed:', error)
       clearToken()
+      const { title, message, icon } = parseError(error)
+      toast.add({
+        title: title || 'Login failed',
+        description: message,
+        icon,
+        color: 'error'
+      })
       return false
     }
   }

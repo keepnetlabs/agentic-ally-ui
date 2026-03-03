@@ -47,9 +47,9 @@ export const useChatClient = () => {
         }
     }
 
-    const createStop = () => {
+    const createStop = (chatClient: any) => {
         return () => {
-            // Chat class doesn't have stop method, need to use AbortController
+            chatClient.stop()
         }
     }
 

@@ -48,14 +48,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Chat not found' })
   }
 
-  // Save user message if this is a new message
+  // Save user message if this is a new message.
+  // Use the client-side message ID so retries are idempotent (no duplicates).
   const lastMessage = messages[messages.length - 1]
   if (lastMessage.role === 'user' && messages.length > 1) {
     await db.insert(tables.messages).values({
+      ...(lastMessage.id ? { id: lastMessage.id } : {}),
       chatId,
       role: 'user',
       content: parseAIMessage(lastMessage)
-    })
+    }).onConflictDoNothing()
   }
 
   // Fetch policy URLs for company context

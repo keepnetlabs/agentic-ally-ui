@@ -237,7 +237,10 @@ import { useClipboard } from '@vueuse/core'
 import { useRouteParams } from '../composables/useRouteParams'
 
 import { useSecureApi } from '../composables/useSecureApi'
+import { parseError } from '../utils/error-handler'
 import type { LandingPage, ServerMessage } from '../types/chat'
+
+const toast = useToast()
 
 interface CanvasContent {
   type: 'preview' | 'email' | 'smishing-sms' | 'code' | 'html' | 'markdown' | 'url' | 'landing-page'
@@ -511,6 +514,16 @@ const handleEditorSave = async (newHtml: string) => {
       emit('refresh', messageId, fullContent)
     } catch (error) {
       console.error('Failed to save template:', error)
+      // Skip toast for 401 – useSecureApi already shows it
+      const status = (error as any)?.statusCode ?? (error as any)?.response?.status
+      if (status === 401) return
+      const { title, message, icon } = parseError(error)
+      toast.add({
+        title: title || 'Save failed',
+        description: message,
+        icon,
+        color: 'error'
+      })
     }
   }
 
@@ -563,6 +576,16 @@ const handleSmishingSave = async (newTemplate: string) => {
     emit('refresh', messageId, fullContent)
   } catch (error) {
     console.error('Failed to save smishing template:', error)
+    // Skip toast for 401 – useSecureApi already shows it
+    const status = (error as any)?.statusCode ?? (error as any)?.response?.status
+    if (status === 401) return
+    const { title, message, icon } = parseError(error)
+    toast.add({
+      title: title || 'Save failed',
+      description: message,
+      icon,
+      color: 'error'
+    })
   }
 }
 

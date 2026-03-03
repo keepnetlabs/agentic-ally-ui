@@ -7,7 +7,13 @@ export default defineEventHandler(async (event) => {
 
   const userId = await resolveChatUserId(event)
 
-  return await db.delete(tables.chats)
+  const result = await db.delete(tables.chats)
     .where(and(eq(tables.chats.id, id as string), eq(tables.chats.userId, userId)))
     .returning()
+
+  if (!result.length) {
+    throw createError({ statusCode: 404, statusMessage: 'Chat not found' })
+  }
+
+  return result
 })

@@ -235,7 +235,8 @@ const {
 
 useExternalPrompt({ input, promptRef })
 
-const streamSilentRetryPending = ref(false)
+const streamSilentRetryCount = ref(0)
+const MAX_SILENT_RETRIES = 2
 
 const streamUrl = buildUrl(`/api/chats/${chatId}`)
 
@@ -272,6 +273,14 @@ const chatClient = new Chat({
     parts: m.parts ?? []
   })),
   async onFinish(data: any) {
+    // AI SDK calls onFinish in a finally block — it fires even on errors.
+    // Skip saving and state resets when the request actually failed,
+    // otherwise we'd save empty messages to DB and reset the retry counter
+    // mid-cycle (which was causing the infinite retry loop).
+    if (data?.isError) {
+      return
+    }
+
     // Extract the actual message from the data structure
     const message = data.message || data
 
@@ -288,16 +297,16 @@ const chatClient = new Chat({
 
     // Mark finished to prevent stuck loader
     lastFinishedMessageId.value = message?.id || null
-    streamSilentRetryPending.value = false
+    streamSilentRetryCount.value = 0
   },
   onError(err: any) {
     console.error('Chat stream error:', err)
     const { title, message, icon, canRetry } = parseError(err)
 
-    // First failure with a retryable error: silent retry once before bothering the user
-    if (canRetry && !streamSilentRetryPending.value) {
-      streamSilentRetryPending.value = true
-      console.log('[stream-retry] Silent retry in 1.5s...')
+    // Silent retry: retry once automatically before showing error to user
+    if (canRetry && streamSilentRetryCount.value < MAX_SILENT_RETRIES) {
+      streamSilentRetryCount.value++
+      console.log(`[stream-retry] Silent retry ${streamSilentRetryCount.value}/${MAX_SILENT_RETRIES} in 1.5s...`)
       setTimeout(() => {
         if (!isComponentActive.value) return
         chatClient.regenerate()
@@ -305,8 +314,8 @@ const chatClient = new Chat({
       return
     }
 
-    // Second failure or non-retryable: show toast with a Retry action
-    streamSilentRetryPending.value = false
+    // Max silent retries exhausted or non-retryable: show toast
+    streamSilentRetryCount.value = 0
 
     // Clear the stuck streaming indicator by marking the last assistant message as finished
     const lastMsg = chatClient.messages[chatClient.messages.length - 1]
@@ -326,7 +335,7 @@ const chatClient = new Chat({
         color: 'error' as const,
         variant: 'outline' as const,
         onClick: () => {
-          streamSilentRetryPending.value = false
+          streamSilentRetryCount.value = 0
           lastFinishedMessageId.value = null
           chatClient.regenerate()
         }
@@ -374,7 +383,7 @@ const promptStatus = computed(() => {
 
 const handleSubmit = createHandleSubmit(chatClient, input, messages, status, lastFinishedMessageId)
 
-const stop = createStop()
+const stop = createStop(chatClient)
 onBeforeUnmount(() => {
   isComponentActive.value = false
   stop()
