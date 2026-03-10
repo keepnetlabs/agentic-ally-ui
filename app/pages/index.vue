@@ -5,6 +5,7 @@ import { navigateTo, refreshNuxtData, useColorMode, useToast } from '#imports'
 import { useRouteParams } from '../composables/useRouteParams'
 import { useAuthToken } from '../composables/useAuthToken'
 import { useSecureApi } from '../composables/useSecureApi'
+import { useApiHeaders } from '../composables/useApiHeaders'
 import { parseError } from '../utils/error-handler'
 import { useMentions } from '../composables/useMentions'
 
@@ -12,10 +13,22 @@ const input = ref('')
 const loading = ref(false)
 const colorMode = useColorMode()
 const toast = useToast()
+const showCustomerService = false
+const selectedBot = ref<'chat' | 'cs'>('chat')
 
-const { buildUrl, companyId, baseApiUrl, sessionId } = useRouteParams()
+// Temporarily keep CS disabled for production release.
+// Restore the localStorage behavior below after the build if needed.
+// const BOT_TYPE_KEY = 'agentic-ally-bot-type'
+// onMounted(() => {
+//   const saved = localStorage.getItem(BOT_TYPE_KEY)
+//   if (saved === 'cs') selectedBot.value = 'cs'
+// })
+// watch(selectedBot, (val) => localStorage.setItem(BOT_TYPE_KEY, val))
+
+const { buildUrl, sessionId } = useRouteParams()
 const { token: accessToken } = useAuthToken()
 const { secureFetch } = useSecureApi()
+const { apiHeaders } = useApiHeaders()
 const hasAccessToken = computed(() => Boolean(accessToken.value))
 const hasSessionId = computed(() => Boolean(sessionId.value))
 const isAuthReady = computed(() => hasAccessToken.value)
@@ -45,6 +58,11 @@ const {
   debounceMs: 500
 })
 
+const mentionDropdownRef = ref<{ listRef?: HTMLElement | null } | null>(null)
+watch(() => mentionDropdownRef.value?.listRef, (el) => {
+  mentionListRef.value = el ?? null
+})
+
 interface CreateChatResponse {
   id: string
 }
@@ -64,11 +82,7 @@ async function createChat(prompt: string) {
       method: 'POST',
       body: { prompt },
       credentials: 'include',
-      headers: {
-        ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
-        ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
-        ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
-      }
+      headers: apiHeaders.value
     })
     if (!chat?.id) {
       return
@@ -76,7 +90,10 @@ async function createChat(prompt: string) {
 
     refreshNuxtData('chats')
 
-    const chatUrl = buildUrl(`/chat/${chat.id}`)
+    const baseChatUrl = buildUrl(`/chat/${chat.id}`)
+    const chatUrl = showCustomerService && selectedBot.value === 'cs'
+      ? `${baseChatUrl}${baseChatUrl.includes('?') ? '&' : '?'}botType=cs`
+      : baseChatUrl
     navigateTo(chatUrl)
   } catch (error) {
     const { title, message, icon } = parseError(error)
@@ -138,7 +155,7 @@ watch(hasAccessToken, (tokenReady) => {
   requestChat(prompt)
 })
 
-const quickChats = [
+const mainQuickChats = [
   {
     label: 'Generate Microlearning',
     prompt: 'Generate microlearning',
@@ -156,7 +173,30 @@ const quickChats = [
   }
 ]
 
-const examplePrompts = [
+// Restore this list after the build by enabling `showCustomerService`.
+const csQuickChats = [
+  {
+    label: 'Search Companies',
+    prompt: 'Search companies',
+    icon: 'i-lucide-building-2'
+  },
+  {
+    label: 'Training Stats',
+    prompt: 'Show training statistics',
+    icon: 'i-lucide-bar-chart-3'
+  },
+  {
+    label: 'License Status',
+    prompt: 'Check license status',
+    icon: 'i-lucide-shield-check'
+  }
+]
+
+const quickChats = computed(() =>
+  showCustomerService && selectedBot.value === 'cs' ? csQuickChats : mainQuickChats
+)
+
+const mainExamplePrompts = [
   'QR phishing training for frontline staff',
   'SQL injection training for backend developers',
   'Secure coding microlearning for API teams',
@@ -164,6 +204,19 @@ const examplePrompts = [
   'Supply-chain security training for procurement and operations teams',
   'Compliance training aligned with ISO, GDPR, and HIPAA requirements'
 ]
+
+// Restore these prompts after the build by enabling `showCustomerService`.
+const csExamplePrompts = [
+  'Find all companies in Healthcare industry',
+  'Show companies with expired licenses',
+  'Companies with more than 100 users',
+  'Search for companies created in 2025',
+  'Which companies have Enterprise license?'
+]
+
+const examplePrompts = computed(() =>
+  showCustomerService && selectedBot.value === 'cs' ? csExamplePrompts : mainExamplePrompts
+)
 </script>
 
 <template>
@@ -175,8 +228,36 @@ const examplePrompts = [
     <template #body>
       <UContainer class="flex-1 flex flex-col justify-center gap-4 sm:gap-6 py-8">
         <img :src="imageUrl" class="mx-auto max-w-32 max-h-32" />
+        <div v-if="showCustomerService" class="flex gap-2 justify-center">
+          <UButton
+            :variant="selectedBot === 'chat' ? 'solid' : 'outline'"
+            color="info"
+            icon="i-lucide-bot"
+            label="Main Assistant"
+            size="sm"
+            :ui="{
+              base: selectedBot === 'chat'
+                ? 'dark:bg-black dark:text-white dark:border-white'
+                : 'dark:border-gray-600 dark:text-gray-400 dark:hover:text-white'
+            }"
+            @click="selectedBot = 'chat'"
+          />
+          <UButton
+            :variant="selectedBot === 'cs' ? 'solid' : 'outline'"
+            color="info"
+            icon="i-lucide-headset"
+            label="Customer Service"
+            size="sm"
+            :ui="{
+              base: selectedBot === 'cs'
+                ? 'dark:bg-black dark:text-white dark:border-white'
+                : 'dark:border-gray-600 dark:text-gray-400 dark:hover:text-white'
+            }"
+            @click="selectedBot = 'cs'"
+          />
+        </div>
         <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">
-          How can I help you today?
+          {{ showCustomerService && selectedBot === 'cs' ? 'Customer Service' : 'How can I help you today?' }}
         </h1>
 
         <div
@@ -210,65 +291,15 @@ const examplePrompts = [
 
           </UChatPrompt>
 
-          <div
-            v-if="mentionOpen"
-            class="absolute left-0 right-0 bottom-full mb-2 z-30 pointer-events-none"
-          >
-            <div ref="mentionListRef" class="max-h-44 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
-              <div v-if="mentionLoading" class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                <UIcon name="i-lucide-loader-2" class="h-3.5 w-3.5 animate-spin" />
-                Loading results...
-              </div>
-              <div
-                v-else-if="mentionResults.length === 0"
-                class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400"
-              >
-                <UIcon name="i-lucide-search-x" class="h-3.5 w-3.5" />
-                No results...
-              </div>
-              <button
-                v-for="(item, index) in mentionResults"
-                :key="`${item.kind}-${item.id}`"
-                type="button"
-                :data-mention-index="index"
-                class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 pointer-events-auto"
-                :class="index === mentionIndex ? 'bg-gray-50 dark:bg-gray-800' : ''"
-                @mousedown.prevent="handleMentionMouseDown(item)"
-              >
-                <div
-                  v-if="!item.avatar"
-                  class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100"
-                >
-                  {{ getMentionInitials(item) }}
-                </div>
-                <img
-                  v-else
-                  :src="item.avatar"
-                  :alt="item.name"
-                  class="h-6 w-6 rounded-full"
-                />
-                <div class="flex flex-col">
-                  <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
-                    {{ item.name }}
-                    <span
-                      class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                      :class="item.kind === 'group'
-                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200'
-                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'"
-                    >
-                      <UIcon :name="item.kind === 'group' ? 'i-lucide-users' : 'i-lucide-user'" class="h-3 w-3" />
-                      {{ item.kind === 'group' ? 'Target Group' : 'Target User' }}
-                    </span>
-                  </span>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ item.kind === 'group'
-                      ? `${item.memberCount ?? 0} ${((item.memberCount ?? 0) === 1 || (item.memberCount ?? 0) === 0) ? 'member' : 'members'}`
-                      : item.email }}
-                  </span>
-                </div>
-              </button>
-            </div>
-          </div>
+          <MentionDropdown
+            ref="mentionDropdownRef"
+            :open="mentionOpen"
+            :loading="mentionLoading"
+            :results="mentionResults"
+            :active-index="mentionIndex"
+            :get-initials="getMentionInitials"
+            @select="handleMentionMouseDown"
+          />
         </div>
 
         <div class="flex flex-wrap gap-2 w-full justify-center">

@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
   const { id } = getRouterParams(event)
   const chatId = id as string
   // TODO: Use readValidatedBody
-  const { modelProvider, model, messages, conversationId } = await readBody(event)
+  const { modelProvider, model, messages, conversationId, botType } = await readBody(event)
 
   const db = useDrizzle()
   const userId = await resolveChatUserId(event)
@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
   const baseApiUrl = getHeader(event, 'x-base-api-url')
   let policyUrls: string[] = []
 
-  if (companyId) {
+  if (botType !== 'cs' && companyId) {
     try {
       const policies = await db.query.policies.findMany({
         where: (policy, { eq }) => eq(policy.companyId, companyId),
@@ -110,15 +110,26 @@ export default defineEventHandler(async (event) => {
   try {
     const config = useRuntimeConfig()
     const accessToken = getHeader(event, 'x-agentic-ally-token') || config.viteDefaultToken || ''
+
+    // Route to CS endpoint if botType is 'cs'
+    let targetUrl = fleetAgentUrl!
+    if (botType === 'cs') {
+      const origin = new URL(fleetAgentUrl!).origin
+      targetUrl = `${origin}/customer-service/chat`
+    }
+
     console.log('Fleet Agent request context:', {
       hasAccessToken: Boolean(accessToken),
       hasCompanyId: Boolean(companyId),
       hasBaseApiUrl: Boolean(baseApiUrl),
       policyUrlsCount: policyUrls.length,
       modelProvider: String(modelProvider || 'unknown'),
-      model: String(model || 'unknown')
+      model: String(model || 'unknown'),
+      botType: botType || 'chat',
+      targetUrl
     })
-    const response = await fetch(fleetAgentUrl!, {
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

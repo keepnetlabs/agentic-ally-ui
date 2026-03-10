@@ -1,12 +1,5 @@
 import { extractCompanyId } from '../../utils/company-id'
-
-const resolveBaseApiUrl = (value: string) => {
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (trimmed === 'https://test-ui.devkeepnet.com') {
-    return 'https://test-api.devkeepnet.com'
-  }
-  return trimmed
-}
+import { resolveBaseApiUrl } from '../../utils/resolve-api-url'
 
 export default defineEventHandler(async (event) => {
   const { code, baseApiUrl: rawBaseApiUrl } = await readBody(event)

@@ -359,6 +359,7 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
         .replace(/::heartbeat::/g, '')
+        .replace(/\[Company Selected:[^\]]*\]\s*/g, '')
 }
 
 // Extract smishing landing page from message
@@ -428,6 +429,7 @@ export function getSanitizedTitle(rawTitle: string): string {
         .replace(/::ui:target_user::[^\n]*/g, '')
         .replace(/::\/ui:target_user::/g, '')
         .replace(/^[A-Za-z0-9+/]{20,}={0,2}$/gm, '')
+        .replace(/\[Company Selected:[^\]]*\]\s*/g, '')
         .replace(/\n{2,}/g, '\n')
 }
 

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useFetch } from 'nuxt/app'
-import { useRouteParams } from '../composables/useRouteParams'
 import { useAuthToken } from '../composables/useAuthToken'
 import { useSecureApi } from '../composables/useSecureApi'
+import { useApiHeaders } from '../composables/useApiHeaders'
 // @ts-ignore - Nuxt auto-imports
 import { useToast } from '#imports'
 // @ts-ignore - Nuxt auto-imports
@@ -13,28 +13,10 @@ const toast = useToast()
 // @ts-ignore - Nuxt auto-imports useOverlay
 const overlay = useOverlay()
 
-// Get query params and token
-const { companyId, baseApiUrl } = useRouteParams()
+// Get token and API headers
 const { token } = useAuthToken()
 const { secureFetch } = useSecureApi()
-
-// Build headers for requests
-const buildHeaders = () => {
-  const headers: Record<string, string> = {}
-  if (token.value) {
-    headers['X-AGENTIC-ALLY-TOKEN'] = token.value
-  }
-  if (companyId.value) {
-    headers['X-COMPANY-ID'] = companyId.value
-  }
-  if (baseApiUrl.value) {
-    headers['X-BASE-API-URL'] = baseApiUrl.value
-  }
-  return headers
-}
-
-// Fetch policies
-const policyHeaders = computed(() => buildHeaders())
+const { apiHeaders } = useApiHeaders()
 
 // @ts-ignore - Nuxt allows top-level await in script setup
 const { data: policies, refresh: refreshPolicies } = await useFetch('/api/files', {
@@ -42,7 +24,7 @@ const { data: policies, refresh: refreshPolicies } = await useFetch('/api/files'
   immediate: false,
   lazy: true,
   credentials: 'include',
-  headers: policyHeaders
+  headers: apiHeaders
 })
 
 watch(token, (value) => {
@@ -139,7 +121,7 @@ const handleUpload = async () => {
       method: 'POST',
       body: formData,
       credentials: 'include',
-      headers: buildHeaders()
+      headers: apiHeaders.value
     })
 
     toast.add({
@@ -231,7 +213,7 @@ const handleDelete = async (policyId: string, policyName: string) => {
     await secureFetch(`/api/files/${policyId}`, {
       method: 'DELETE',
       credentials: 'include',
-      headers: buildHeaders()
+      headers: apiHeaders.value
     })
 
     toast.add({

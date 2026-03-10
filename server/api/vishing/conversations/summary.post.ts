@@ -1,5 +1,6 @@
 import { createError, getHeader, getQuery, readBody } from 'h3'
 import { captureUpstreamException, captureUpstreamMessage } from '../../../utils/sentry-upstream'
+import { resolveBaseApiUrl } from '../../../utils/resolve-api-url'
 
 type SummaryRequestMessage = {
   role: string
@@ -16,14 +17,6 @@ type SummaryRequestBody = {
 
 const SUMMARY_TIMEOUT_MS = 90000
 const ROUTE_NAME = '/api/vishing/conversations/summary'
-
-const resolveBaseApiUrl = (value: string) => {
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (trimmed === 'https://test-ui.devkeepnet.com') {
-    return 'https://test-api.devkeepnet.com'
-  }
-  return trimmed
-}
 
 const tryParseUrl = (value?: string) => {
   if (!value) return null

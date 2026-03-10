@@ -1,4 +1,5 @@
 import { createError, getHeader, getQuery } from 'h3'
+import { resolveBaseApiUrl } from '../utils/resolve-api-url'
 
 type TargetGroup = {
   resourceId: string
@@ -29,14 +30,6 @@ const parseLimit = (value: unknown, fallback = 8) => {
     return fallback
   }
   return Math.min(Math.max(parsed, 1), 20)
-}
-
-const resolveBaseApiUrl = (value: string) => {
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (trimmed === 'https://test-ui.devkeepnet.com') {
-    return 'https://test-api.devkeepnet.com'
-  }
-  return trimmed
 }
 
 export default defineEventHandler(async (event) => {

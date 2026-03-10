@@ -255,30 +255,38 @@ defineShortcuts({
           </template>
         </div>
 
-        <UNavigationMenu
-          v-if="!collapsed"
-          :items="items"
-          :collapsed="collapsed"
-          orientation="vertical"
-          :ui="{
-            link: 'overflow-hidden',
-            linkActive: 'dark:!text-white'
-          }"
-        >
-          <template #chat-trailing="{ item }">
-            <div class="flex -mr-1.25 translate-x-full group-hover:translate-x-0 transition-transform">
-              <UButton
-                icon="i-lucide-x"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
-                tabindex="-1"
-                @click.stop.prevent="deleteChat(item.id)"
-              />
-            </div>
-          </template>
-        </UNavigationMenu>
+        <template v-if="!collapsed">
+          <UNavigationMenu
+            v-if="items?.length"
+            :items="items"
+            :collapsed="collapsed"
+            orientation="vertical"
+            :ui="{
+              link: 'overflow-hidden',
+              linkActive: 'dark:!text-white'
+            }"
+          >
+            <template #chat-trailing="{ item }">
+              <div class="flex -mr-1.25 translate-x-full group-hover:translate-x-0 transition-transform">
+                <UButton
+                  icon="i-lucide-x"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
+                  tabindex="-1"
+                  @click.stop.prevent="deleteChat(item.id)"
+                />
+              </div>
+            </template>
+          </UNavigationMenu>
+
+          <div v-else class="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+            <UIcon name="i-lucide-message-circle" class="w-8 h-8 text-muted opacity-40" />
+            <p class="text-sm text-muted">No chats yet</p>
+            <p class="text-xs text-muted opacity-60">Start a conversation to see it here</p>
+          </div>
+        </template>
       </template>
     </UDashboardSidebar>
 

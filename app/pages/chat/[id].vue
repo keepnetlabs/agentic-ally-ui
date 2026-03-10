@@ -11,6 +11,7 @@ import { useChatClient } from '../../composables/useChatClient'
 import { useRouteParams } from '../../composables/useRouteParams'
 import { useAuthToken } from '../../composables/useAuthToken'
 import { useSecureApi } from '../../composables/useSecureApi'
+import { useApiHeaders } from '../../composables/useApiHeaders'
 import { parseError } from '../../utils/error-handler'
 import { getPromptInputElement } from '../../utils/prompt-utils'
 import { Chat } from '@ai-sdk/vue'
@@ -24,21 +25,16 @@ import {
   extractLandingPageFromMessage,
   extractAvatarSelectionFromMessage,
   extractVoiceSelectionFromMessage,
-  extractVishingCallStartedFromMessage,
-  extractVishingCallTranscriptFromMessage,
-  extractDeepfakeVideoGeneratingFromMessage,
   type AvatarSelectionPayload,
   type VoiceSelectionPayload,
-  type VishingCallStartedPayload,
-  type VishingCallTranscriptPayload,
   type VishingNextStepItem,
-  type VishingConversationSummaryPayload,
-  type DeepfakeVideoGeneratingPayload,
   getSanitizedContentForTemplate,
   getAllStreamText,
   showInCanvas as showInCanvasUtil
 } from '../../utils/message-utils'
 import { useMentions } from '../../composables/useMentions'
+import { useVishingPolling } from '../../composables/useVishingPolling'
+import { useDeepfakePolling } from '../../composables/useDeepfakePolling'
 import { useExternalPrompt } from '../../composables/useExternalPrompt'
 import { useChatNavigation } from '../../composables/useChatNavigation'
 import { exponentialBackoffWithJitter, DEFAULT_RETRY_CONFIG, type RetryConfig } from '../../utils/retry-handler'
@@ -55,11 +51,18 @@ const clipboard = useClipboard()
 const { model } = useLLM()
 const { isCanvasVisible, toggleCanvas, hideCanvas, clearCanvasContent } = useCanvas()
 const { getModelConfig, createHandleSubmit, createStop, createReload, createMessages, createStatus, createErrorComputed } = useChatClient()
-const { buildUrl, companyId, baseApiUrl, sessionId } = useRouteParams()
+const { buildUrl, sessionId } = useRouteParams()
 const { token: accessToken, clearToken } = useAuthToken()
 const { secureFetch } = useSecureApi()
+const { apiHeaders } = useApiHeaders()
 
 const chatId = String(route.params.id)
+
+// Temporarily force Main Assistant for the production release.
+// Restore the original line below after the build if Customer Service should come back.
+// const BOT_TYPE_KEY = 'agentic-ally-bot-type'
+// const botType = (route.query.botType as string) || (typeof window !== 'undefined' ? localStorage.getItem(BOT_TYPE_KEY) : null) || 'chat'
+const botType = 'chat'
 
 const chatUrl = buildUrl(`/api/chats/${chatId}`)
 
@@ -92,11 +95,7 @@ const saveMessageWithRetry = async (
         role: 'assistant',
         content: content
       },
-      headers: {
-        ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
-        ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
-        ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
-      }
+      headers: apiHeaders.value
     })
 
     // Success - silent success, no toast (only notify on errors)
@@ -233,6 +232,11 @@ const {
   debounceMs: 500
 })
 
+const mentionDropdownRef = ref<{ listRef?: HTMLElement | null } | null>(null)
+watch(() => mentionDropdownRef.value?.listRef, (el) => {
+  mentionListRef.value = el ?? null
+})
+
 useExternalPrompt({ input, promptRef })
 
 const streamSilentRetryCount = ref(0)
@@ -244,6 +248,8 @@ const chatClient = new Chat({
   id: chatId,
   transport: new DefaultChatTransport({
     api: streamUrl,
+    // Restore CS routing after the build if needed:
+    // body: { ...getModelConfig(model.value), conversationId: chatId, ...(botType === 'cs' ? { botType: 'cs' } : {}) },
     body: { ...getModelConfig(model.value), conversationId: chatId },
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await fetch(input, {
@@ -251,9 +257,7 @@ const chatClient = new Chat({
         headers: {
           ...(init?.headers || {}),
           ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}),
-          ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
-          ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
-          ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
+          ...apiHeaders.value
         }
       })
 
@@ -284,7 +288,12 @@ const chatClient = new Chat({
     // Extract the actual message from the data structure
     const message = data.message || data
 
-    // Save AI response to database with retry logic
+    // Mark finished IMMEDIATELY to unblock UI (streaming indicator + prompt input).
+    // Must happen before the async save which can take seconds with retries.
+    lastFinishedMessageId.value = message?.id || null
+    streamSilentRetryCount.value = 0
+
+    // Save AI response to database with retry logic (non-blocking for UI)
     if (message && message.role === 'assistant') {
       const content = message.content || parseAIMessage(message)
 
@@ -294,10 +303,6 @@ const chatClient = new Chat({
       // Auto-trigger canvas for URLs in AI response
       checkAndTriggerCanvas(message)
     }
-
-    // Mark finished to prevent stuck loader
-    lastFinishedMessageId.value = message?.id || null
-    streamSilentRetryCount.value = 0
   },
   onError(err: any) {
     console.error('Chat stream error:', err)
@@ -388,8 +393,7 @@ onBeforeUnmount(() => {
   isComponentActive.value = false
   stop()
   clearAllVishingPolling()
-  for (const timer of deepfakePollingTimers.values()) clearInterval(timer)
-  deepfakePollingTimers.clear()
+  clearDeepfakePolling()
 })
 const reload = createReload(chatClient)
 
@@ -450,604 +454,35 @@ watch(
 const copied = ref(false)
 const canvasRef = ref()
 const openCanvasType = ref<'email' | 'landing-page' | null>(null)
-const VISHING_POLL_INTERVAL_MS = 1000
-const VISHING_POLL_TIMEOUT_MS = 600000
-const VISHING_STATUS_FETCH_TIMEOUT_MS = 35000
+const { vishingUiByMessageId, processVishingStartedSignal, clearAllVishingPolling } = useVishingPolling({
+  chatId,
+  messages: () => messages.value,
+  buildUrl,
+  secureFetch,
+  getApiHeaders: () => apiHeaders.value
+})
 
-const DEEPFAKE_POLL_INTERVAL_MS  = 10_000   // 10 saniye — render 1-2dk sürer
-const DEEPFAKE_POLL_TIMEOUT_MS   = 1_200_000 // 20 dakika max
-
-const deepfakePollingTimers      = new Map<string, ReturnType<typeof setInterval>>()
-const deepfakePollingStartedAt   = new Map<string, number>()
-const deepfakePollingInFlight    = new Set<string>()
-const deepfakeStatusByVideoId    = ref<Map<string, {
-  videoId: string
-  status: string
-  videoUrl: string | null
-  videoUrlCaption: string | null
-  thumbnailUrl: string | null
-  durationSec: number | null
-  errorMessage: string | null
-}>>(new Map())
-
-const vishingPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
-const vishingPollingStartedAt = new Map<string, number>()
-const vishingPollingInFlight = new Set<string>()
-const vishingPollFailCount = new Map<string, number>()
-const VISHING_POLL_MAX_CONSECUTIVE_FAILURES = 3
-const vishingSummaryRequested = new Set<string>()
-const vishingSummaryAttempted = new Set<string>()
-const vishingSummaryInFlight = new Set<string>()
-const vishingConversationByMessageId = ref<Map<string, string>>(new Map())
-const vishingTranscriptByConversationId = ref<Map<string, VishingCallTranscriptPayload>>(new Map())
-const vishingSummaryByConversationId = ref<Map<string, VishingConversationSummaryPayload>>(new Map())
-
-const clearAllVishingPolling = () => {
-  for (const timer of vishingPollingTimers.values()) {
-    clearInterval(timer)
-  }
-  vishingPollingTimers.clear()
-  vishingPollingStartedAt.clear()
-  vishingPollingInFlight.clear()
-  vishingPollFailCount.clear()
-  vishingSummaryRequested.clear()
-  vishingSummaryAttempted.clear()
-  vishingSummaryInFlight.clear()
-}
-
-type VishingStatusResponse = {
-  conversationId: string
-  status: string
-  callDurationSecs: number
-  hasAudio?: boolean
-  has_audio?: boolean
-  recordingUrl?: string
-  recording_url?: string
-  audioUrl?: string
-  audio_url?: string
-  metadata?: {
-    hasAudio?: boolean
-    has_audio?: boolean
-    recordingUrl?: string
-    recording_url?: string
-    audioUrl?: string
-    audio_url?: string
-  }
-  transcript: Array<{
-    role: 'agent' | 'user'
-    message: string
-    timestamp: number
-  }>
-}
+const { deepfakeUiByMessageId, processDeepfakeSignal, clearDeepfakePolling } = useDeepfakePolling({
+  chatId,
+  messages: () => messages.value,
+  buildUrl,
+  secureFetch
+})
 
 const wrappedHideCanvas = () => {
   openCanvasType.value = null
   hideCanvas()
 }
 
-const setVishingConversationForMessage = (messageId: string, conversationId: string) => {
-  const next = new Map(vishingConversationByMessageId.value)
-  next.set(messageId, conversationId)
-  vishingConversationByMessageId.value = next
-}
-
-const setVishingTranscriptForConversation = (conversationId: string, payload: VishingCallTranscriptPayload) => {
-  const next = new Map(vishingTranscriptByConversationId.value)
-  next.set(conversationId, payload)
-  vishingTranscriptByConversationId.value = next
-}
-
-const setVishingSummaryForConversation = (conversationId: string, payload: VishingConversationSummaryPayload) => {
-  const next = new Map(vishingSummaryByConversationId.value)
-  next.set(conversationId, payload)
-  vishingSummaryByConversationId.value = next
-}
-
-const isTerminalVishingStatus = (status?: string) => {
-  const normalized = (status || '').toLowerCase()
-  return normalized === 'done' || normalized === 'failed' || normalized === 'timeout'
-}
-
-const normalizeVishingResponse = (
-  conversationId: string,
-  response: Partial<VishingStatusResponse>
-): VishingCallTranscriptPayload => {
-  const hasAudio = response.hasAudio
-    ?? response.has_audio
-    ?? response.metadata?.hasAudio
-    ?? response.metadata?.has_audio
-    ?? false
-
-  const recordingUrl = response.recordingUrl
-    || response.recording_url
-    || response.audioUrl
-    || response.audio_url
-    || response.metadata?.recordingUrl
-    || response.metadata?.recording_url
-    || response.metadata?.audioUrl
-    || response.metadata?.audio_url
-    || undefined
-
-  const transcript: VishingCallTranscriptPayload['transcript'] = Array.isArray(response.transcript)
-    ? response.transcript.map((item) => {
-      const role: 'agent' | 'user' = item.role === 'agent' ? 'agent' : 'user'
-      return {
-        role,
-        message: item.message || '',
-        timestamp: Number(item.timestamp || 0)
-      }
-    })
-    : []
-
-  return {
-    conversationId,
-    status: response.status || 'initiated',
-    callDurationSecs: Number(response.callDurationSecs || 0),
-    hasAudio: Boolean(hasAudio),
-    recordingUrl: typeof recordingUrl === 'string' && recordingUrl.length > 0 ? recordingUrl : undefined,
-    transcript
-  }
-}
-
-const stopVishingPolling = (conversationId: string) => {
-  console.log('[vishing-ui] stop polling', { chatId, conversationId })
-  const timer = vishingPollingTimers.get(conversationId)
-  if (timer) {
-    clearInterval(timer)
-    vishingPollingTimers.delete(conversationId)
-  }
-  vishingPollingStartedAt.delete(conversationId)
-  vishingPollingInFlight.delete(conversationId)
-  vishingPollFailCount.delete(conversationId)
-}
-
-type VishingConversationSummaryResponse = {
-  success?: boolean
-  summary?: VishingConversationSummaryPayload['summary']
-  nextSteps?: VishingConversationSummaryPayload['nextSteps']
-  statusCard?: VishingConversationSummaryPayload['statusCard']
-}
-
-const requestVishingSummary = async (conversationId: string, payload: VishingCallTranscriptPayload) => {
-  if (
-    !conversationId
-    || vishingSummaryRequested.has(conversationId)
-    || vishingSummaryAttempted.has(conversationId)
-    || vishingSummaryInFlight.has(conversationId)
-  ) return
-  if (!isTerminalVishingStatus(payload.status)) return
-  if (!payload.transcript?.length) return
-
-  vishingSummaryAttempted.add(conversationId)
-  vishingSummaryInFlight.add(conversationId)
-  const summaryBody = {
-    accessToken: accessToken.value || undefined,
-    conversationId,
-    messages: payload.transcript.map((item) => ({
-      role: item.role,
-      text: item.message,
-      timestamp: item.timestamp
-    }))
-  }
-
-  try {
-    const summaryUrl = buildUrl('/api/vishing/conversations/summary')
-    console.log('[vishing-summary] request', { chatId, conversationId, summaryUrl, messageCount: summaryBody.messages.length })
-    const response = await secureFetch<VishingConversationSummaryResponse>(summaryUrl, {
-      method: 'POST',
-      body: summaryBody,
-      headers: {
-        ...(accessToken.value ? { 'X-AGENTIC-ALLY-TOKEN': accessToken.value } : {}),
-        ...(companyId.value ? { 'X-COMPANY-ID': companyId.value } : {}),
-        ...(baseApiUrl.value ? { 'X-BASE-API-URL': baseApiUrl.value } : {})
-      }
-    })
-
-    const normalized: VishingConversationSummaryPayload = {
-      summary: response?.summary,
-      nextSteps: response?.nextSteps || [],
-      statusCard: response?.statusCard
-    }
-
-    setVishingSummaryForConversation(conversationId, normalized)
-    vishingSummaryRequested.add(conversationId)
-    console.log('[vishing-summary] response', {
-      chatId,
-      conversationId,
-      success: response?.success,
-      hasStatusCard: Boolean(response?.statusCard),
-      timelineLength: response?.summary?.timeline?.length || 0,
-      nextStepsLength: response?.nextSteps?.length || 0
-    })
-  } catch (error) {
-    console.error('[vishing-summary] request failed', { chatId, conversationId, error })
-  } finally {
-    vishingSummaryInFlight.delete(conversationId)
-  }
-}
-
-const pollVishingConversation = async (conversationId: string) => {
-  if (!conversationId || vishingPollingInFlight.has(conversationId)) {
-    if (!conversationId) {
-      console.warn('[vishing-ui] poll skipped: missing conversationId')
-    }
-    return
-  }
-
-  const existing = vishingTranscriptByConversationId.value.get(conversationId)
-  if (existing && isTerminalVishingStatus(existing.status)) {
-    console.log('[vishing-ui] poll skipped: terminal state', {
-      chatId,
-      conversationId,
-      status: existing.status
-    })
-    stopVishingPolling(conversationId)
-    return
-  }
-
-  const startedAt = vishingPollingStartedAt.get(conversationId) || Date.now()
-  if (!vishingPollingStartedAt.has(conversationId)) {
-    vishingPollingStartedAt.set(conversationId, startedAt)
-  }
-  if (Date.now() - startedAt >= VISHING_POLL_TIMEOUT_MS) {
-    console.warn('[vishing-ui] poll timeout reached', {
-      chatId,
-      conversationId,
-      timeoutMs: VISHING_POLL_TIMEOUT_MS
-    })
-    setVishingTranscriptForConversation(conversationId, {
-      conversationId,
-      status: 'timeout',
-      callDurationSecs: existing?.callDurationSecs || 0,
-      hasAudio: existing?.hasAudio,
-      recordingUrl: existing?.recordingUrl,
-      transcript: existing?.transcript || []
-    })
-    stopVishingPolling(conversationId)
-    return
-  }
-
-  vishingPollingInFlight.add(conversationId)
-  try {
-    const statusUrlBase = buildUrl(`/api/vishing/status/${encodeURIComponent(conversationId)}`)
-    const separator = statusUrlBase.includes('?') ? '&' : '?'
-    const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}&_t=${Date.now()}`
-    console.log('[vishing-ui] poll request', { chatId, conversationId, statusUrl })
-    const response = await secureFetch<VishingStatusResponse>(statusUrl, {
-      timeout: VISHING_STATUS_FETCH_TIMEOUT_MS
-    })
-    vishingPollFailCount.set(conversationId, 0)
-    const normalized = normalizeVishingResponse(conversationId, response)
-    console.log('[vishing-ui] poll response', {
-      chatId,
-      conversationId,
-      status: normalized.status,
-      hasAudio: normalized.hasAudio,
-      hasRecordingUrl: Boolean(normalized.recordingUrl),
-      transcriptLength: normalized.transcript.length,
-      callDurationSecs: normalized.callDurationSecs
-    })
-    setVishingTranscriptForConversation(conversationId, normalized)
-    requestVishingSummary(conversationId, normalized)
-    const previousLength = existing?.transcript?.length || 0
-    if (!isTerminalVishingStatus(normalized.status) && normalized.transcript.length > previousLength) {
-      // Pull once more quickly after new live transcript chunks for snappier UI.
-      setTimeout(() => {
-        pollVishingConversation(conversationId)
-      }, 250)
-    }
-    if (isTerminalVishingStatus(normalized.status)) {
-      stopVishingPolling(conversationId)
-    }
-  } catch (error) {
-    const statusCode = (error as any)?.statusCode || (error as any)?.response?.status
-    const failCount = (vishingPollFailCount.get(conversationId) || 0) + 1
-    vishingPollFailCount.set(conversationId, failCount)
-
-    const isTerminalHttpError = statusCode === 400 || statusCode === 403 || statusCode === 404 ||
-      (statusCode != null && statusCode >= 500)
-    const tooManyFailures = failCount >= VISHING_POLL_MAX_CONSECUTIVE_FAILURES
-
-    if (isTerminalHttpError || tooManyFailures) {
-      const failureStatus = statusCode === 504 ? 'timeout' : 'failed'
-      setVishingTranscriptForConversation(conversationId, {
-        conversationId,
-        status: failureStatus,
-        callDurationSecs: existing?.callDurationSecs || 0,
-        hasAudio: existing?.hasAudio,
-        recordingUrl: existing?.recordingUrl,
-        transcript: existing?.transcript || []
-      })
-      console.warn('[vishing-ui] poll failed, marking as terminal', {
-        chatId,
-        conversationId,
-        statusCode,
-        failCount,
-        reason: isTerminalHttpError ? 'http-error' : 'consecutive-failures'
-      })
-      stopVishingPolling(conversationId)
-      return
-    }
-    console.error('[vishing-ui] poll error', { chatId, conversationId, error, failCount })
-  } finally {
-    vishingPollingInFlight.delete(conversationId)
-  }
-}
-
-const startVishingPolling = (conversationId: string) => {
-  if (!conversationId) {
-    console.warn('[vishing-ui] start polling skipped: missing conversationId')
-    return
-  }
-  if (vishingPollingTimers.has(conversationId)) {
-    console.log('[vishing-ui] start polling skipped: already active', { chatId, conversationId })
-    return
-  }
-
-  console.log('[vishing-ui] start polling', {
-    chatId,
-    conversationId,
-    intervalMs: VISHING_POLL_INTERVAL_MS,
-    timeoutMs: VISHING_POLL_TIMEOUT_MS
-  })
-  vishingPollingStartedAt.set(conversationId, Date.now())
-  pollVishingConversation(conversationId)
-
-  const timer = setInterval(() => {
-    pollVishingConversation(conversationId)
-  }, VISHING_POLL_INTERVAL_MS)
-  vishingPollingTimers.set(conversationId, timer)
-}
-
-const processVishingStartedSignal = (message: any) => {
-  if (!message?.id) return
-
-  const started = extractVishingCallStartedFromMessage(message)
-  if (!started?.conversationId) return
-  console.log('[vishing-ui] signal detected', {
-    chatId,
-    messageId: message.id,
-    conversationId: started.conversationId,
-    status: started.status
-  })
-
-  setVishingConversationForMessage(message.id, started.conversationId)
-
-  const transcriptFromMessage = extractVishingCallTranscriptFromMessage(message)
-  if (transcriptFromMessage?.conversationId) {
-    console.log('[vishing-ui] transcript signal detected', {
-      chatId,
-      messageId: message.id,
-      conversationId: transcriptFromMessage.conversationId,
-      status: transcriptFromMessage.status,
-      transcriptLength: transcriptFromMessage.transcript?.length || 0
-    })
-    setVishingTranscriptForConversation(transcriptFromMessage.conversationId, transcriptFromMessage)
-    requestVishingSummary(transcriptFromMessage.conversationId, transcriptFromMessage)
-    if (isTerminalVishingStatus(transcriptFromMessage.status)) {
-      stopVishingPolling(transcriptFromMessage.conversationId)
-      return
-    }
-  }
-
-  if (!vishingTranscriptByConversationId.value.has(started.conversationId)) {
-    setVishingTranscriptForConversation(started.conversationId, {
-      conversationId: started.conversationId,
-      status: started.status || 'ringing',
-      callDurationSecs: 0,
-      hasAudio: false,
-      transcript: []
-    })
-  }
-
-  startVishingPolling(started.conversationId)
-}
-
-const vishingUiByMessageId = computed(() => {
-  const result = new Map<string, { started: VishingCallStartedPayload | null; transcript: VishingCallTranscriptPayload | null; summary: VishingConversationSummaryPayload | null }>()
-
-  for (const message of messages.value) {
-    const startedFromMessage = extractVishingCallStartedFromMessage(message)
-    const transcriptFromMessage = extractVishingCallTranscriptFromMessage(message)
-    const mappedConversationId = vishingConversationByMessageId.value.get(message.id)
-    const conversationId = startedFromMessage?.conversationId || transcriptFromMessage?.conversationId || mappedConversationId || ''
-    const polledTranscript = conversationId ? vishingTranscriptByConversationId.value.get(conversationId) || null : null
-    const summary = conversationId ? vishingSummaryByConversationId.value.get(conversationId) || null : null
-
-    const started: VishingCallStartedPayload | null = startedFromMessage || (
-      conversationId
-        ? {
-          conversationId,
-          callSid: '',
-          status: polledTranscript?.status || 'initiated'
-        }
-        : null
-    )
-
-    const transcript = transcriptFromMessage || polledTranscript
-    result.set(message.id, { started, transcript, summary })
-  }
-
-  return result
-})
-
 watch(
   () => route.params.id,
   (current, previous) => {
     if (current !== previous) {
-      console.log('[vishing-ui] route changed, clearing polling state', {
-        from: previous,
-        to: current
-      })
       clearAllVishingPolling()
-      vishingConversationByMessageId.value = new Map()
-      vishingTranscriptByConversationId.value = new Map()
-      vishingSummaryByConversationId.value = new Map()
-
-      // Deepfake polling temizle
-      for (const timer of deepfakePollingTimers.values()) clearInterval(timer)
-      deepfakePollingTimers.clear()
-      deepfakePollingStartedAt.clear()
-      deepfakePollingInFlight.clear()
-      deepfakeStatusByVideoId.value = new Map()
+      clearDeepfakePolling()
     }
   }
 )
-
-const isTerminalDeepfakeStatus = (status: string) =>
-  status === 'completed' || status === 'failed'
-
-const stopDeepfakePolling = (videoId: string) => {
-  const timer = deepfakePollingTimers.get(videoId)
-  if (timer) clearInterval(timer)
-  deepfakePollingTimers.delete(videoId)
-  deepfakePollingStartedAt.delete(videoId)
-  deepfakePollingInFlight.delete(videoId)
-}
-
-const pollDeepfakeStatus = async (videoId: string) => {
-  if (deepfakePollingInFlight.has(videoId)) return
-
-  const existing = deepfakeStatusByVideoId.value.get(videoId)
-  if (existing && isTerminalDeepfakeStatus(existing.status)) {
-    stopDeepfakePolling(videoId)
-    return
-  }
-
-  const startedAt = deepfakePollingStartedAt.get(videoId) || Date.now()
-  if (!deepfakePollingStartedAt.has(videoId)) deepfakePollingStartedAt.set(videoId, startedAt)
-  if (Date.now() - startedAt >= DEEPFAKE_POLL_TIMEOUT_MS) {
-    console.warn('[deepfake-ui] poll timeout reached', { videoId, timeoutMs: DEEPFAKE_POLL_TIMEOUT_MS })
-    const next = new Map(deepfakeStatusByVideoId.value)
-    next.set(videoId, { videoId, status: 'failed', videoUrl: null, videoUrlCaption: null, thumbnailUrl: null, durationSec: null, errorMessage: 'Generation timed out after 20 minutes.' })
-    deepfakeStatusByVideoId.value = next
-    stopDeepfakePolling(videoId)
-    return
-  }
-
-  deepfakePollingInFlight.add(videoId)
-  try {
-    const statusUrlBase = buildUrl(`/api/deepfake/status/${encodeURIComponent(videoId)}`)
-    const separator = statusUrlBase.includes('?') ? '&' : '?'
-    const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}`
-    console.log('[deepfake-ui] poll request', { videoId, statusUrl })
-    const response = await secureFetch<{
-      success: boolean
-      videoId: string
-      status: string
-      videoUrl: string | null
-      videoUrlCaption: string | null
-      thumbnailUrl: string | null
-      durationSec: number | null
-      error?: string | null
-    }>(statusUrl)
-
-    console.log('[deepfake-ui] poll response', {
-      videoId,
-      status: response.status,
-      hasVideoUrl: Boolean(response.videoUrl),
-      error: response.error
-    })
-
-    const next = new Map(deepfakeStatusByVideoId.value)
-    next.set(videoId, {
-      videoId,
-      status:          response.status ?? 'processing',
-      videoUrl:        response.videoUrl ?? null,
-      videoUrlCaption: response.videoUrlCaption ?? null,
-      thumbnailUrl:    response.thumbnailUrl ?? null,
-      durationSec:     response.durationSec ?? null,
-      errorMessage:    response.error ?? null,
-    })
-    deepfakeStatusByVideoId.value = next
-
-    if (isTerminalDeepfakeStatus(response.status)) {
-      console.log('[deepfake-ui] terminal status reached, stopping poll', { videoId, status: response.status })
-      stopDeepfakePolling(videoId)
-    }
-  } catch (err: any) {
-    console.error('[deepfake-ui] poll error', { videoId, err })
-    const errMsg = err?.message || err?.statusMessage || String(err)
-    const next = new Map(deepfakeStatusByVideoId.value)
-    next.set(videoId, {
-      videoId,
-      status:          'failed',
-      videoUrl:        null,
-      videoUrlCaption: null,
-      thumbnailUrl:    null,
-      durationSec:     null,
-      errorMessage:    errMsg || 'Failed to fetch video status.',
-    })
-    deepfakeStatusByVideoId.value = next
-    stopDeepfakePolling(videoId)
-  } finally {
-    deepfakePollingInFlight.delete(videoId)
-  }
-}
-
-const startDeepfakePolling = (videoId: string) => {
-  if (!videoId || deepfakePollingTimers.has(videoId)) return
-
-  deepfakePollingStartedAt.set(videoId, Date.now())
-  pollDeepfakeStatus(videoId)
-
-  const timer = setInterval(() => pollDeepfakeStatus(videoId), DEEPFAKE_POLL_INTERVAL_MS)
-  deepfakePollingTimers.set(videoId, timer)
-}
-
-const processDeepfakeSignal = (message: any) => {
-  if (!message?.id) return
-  const payload = extractDeepfakeVideoGeneratingFromMessage(message)
-  if (!payload?.videoId) return
-
-  if (!deepfakeStatusByVideoId.value.has(payload.videoId)) {
-    const next = new Map(deepfakeStatusByVideoId.value)
-    next.set(payload.videoId, {
-      videoId:         payload.videoId,
-      status:          'processing',
-      videoUrl:        null,
-      videoUrlCaption: null,
-      thumbnailUrl:    null,
-      durationSec:     null,
-      errorMessage:    null,
-    })
-    deepfakeStatusByVideoId.value = next
-  }
-
-  startDeepfakePolling(payload.videoId)
-}
-
-const deepfakeUiByMessageId = computed(() => {
-  const result = new Map<string, {
-    videoId: string
-    status: string
-    videoUrl: string | null
-    videoUrlCaption: string | null
-    thumbnailUrl: string | null
-    durationSec: number | null
-    errorMessage: string | null
-  } | null>()
-
-  for (const message of messages.value) {
-    const payload = extractDeepfakeVideoGeneratingFromMessage(message)
-    if (!payload?.videoId) {
-      result.set(message.id, null)
-      continue
-    }
-    const polled = deepfakeStatusByVideoId.value.get(payload.videoId)
-    result.set(message.id, polled ?? {
-      videoId:         payload.videoId,
-      status:          'processing',
-      videoUrl:        null,
-      videoUrlCaption: null,
-      thumbnailUrl:    null,
-      durationSec:     null,
-      errorMessage:    null,
-    })
-  }
-
-  return result
-})
 
 const avatarSelectionByMessageId = computed(() => {
   const result = new Map<string, AvatarSelectionPayload | null>()
@@ -1280,26 +715,19 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                 />
 
                 <!-- Phishing Email UI - show all emails -->
-                <PhishingEmailCard
-                  v-for="(email, index) in extractAllPhishingEmailsFromMessage(message)"
-                  :key="index"
-                  :email="email"
-                  :index="index"
-                  :total-count="extractAllPhishingEmailsFromMessage(message).length"
-                  :is-canvas-visible="openCanvasType === 'email'"
-                  :is-quishing="email.isQuishing"
-                  @open="(email) => openCanvasWithEmail(email, message.id)"
-                  @toggle="(email) => openCanvasType === 'email' ? wrappedHideCanvas() : openCanvasWithEmail(email, message.id)"
-                />
-
-                <!-- Vishing Call UI -->
-                <VishingCallCard
-                  v-if="vishingUiByMessageId.get(message.id)?.started || vishingUiByMessageId.get(message.id)?.transcript"
-                  :started="vishingUiByMessageId.get(message.id)?.started || null"
-                  :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
-                  :summary="vishingUiByMessageId.get(message.id)?.summary || null"
-                  @create-next-step="handleCreateVishingNextStep"
-                />
+                <template v-for="(emails, ei) in [extractAllPhishingEmailsFromMessage(message)]" :key="ei">
+                  <PhishingEmailCard
+                    v-for="(email, index) in emails"
+                    :key="index"
+                    :email="email"
+                    :index="index"
+                    :total-count="emails.length"
+                    :is-canvas-visible="openCanvasType === 'email'"
+                    :is-quishing="email.isQuishing"
+                    @open="(email) => openCanvasWithEmail(email, message.id)"
+                    @toggle="(email) => openCanvasType === 'email' ? wrappedHideCanvas() : openCanvasWithEmail(email, message.id)"
+                  />
+                </template>
 
                 <!-- Reasoning (shown above content, also during streaming) -->
                 <ReasoningSection :reasoning="message.reasoning" />
@@ -1391,65 +819,15 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
 
               </UChatPrompt>
 
-              <div
-                v-if="mentionOpen"
-                class="absolute left-0 right-0 bottom-full mb-2 z-30 pointer-events-none"
-              >
-                <div ref="mentionListRef" class="max-h-44 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
-                  <div v-if="mentionLoading" class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                    <UIcon name="i-lucide-loader-2" class="h-3.5 w-3.5 animate-spin" />
-                    Loading results...
-                  </div>
-                  <div
-                    v-else-if="mentionResults.length === 0"
-                    class="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400"
-                  >
-                    <UIcon name="i-lucide-search-x" class="h-3.5 w-3.5" />
-                    No results...
-                  </div>
-                  <button
-                    v-for="(item, index) in mentionResults"
-                    :key="`${item.kind}-${item.id}`"
-                    type="button"
-                    :data-mention-index="index"
-                    class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 pointer-events-auto"
-                    :class="index === mentionIndex ? 'bg-gray-50 dark:bg-gray-800' : ''"
-                    @mousedown.prevent="handleMentionMouseDown(item)"
-                  >
-                    <div
-                      v-if="!item.avatar"
-                      class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-100"
-                    >
-                      {{ getMentionInitials(item) }}
-                    </div>
-                    <img
-                      v-else
-                      :src="item.avatar"
-                      :alt="item.name"
-                      class="h-6 w-6 rounded-full"
-                    />
-                    <div class="flex flex-col">
-                      <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
-                        {{ item.name }}
-                        <span
-                          class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          :class="item.kind === 'group'
-                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'"
-                        >
-                          <UIcon :name="item.kind === 'group' ? 'i-lucide-users' : 'i-lucide-user'" class="h-3 w-3" />
-                          {{ item.kind === 'group' ? 'Target Group' : 'Target User' }}
-                        </span>
-                      </span>
-                      <span class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ item.kind === 'group'
-                      ? `${item.memberCount ?? 0} ${((item.memberCount ?? 0) === 1 || (item.memberCount ?? 0) === 0) ? 'member' : 'members'}`
-                      : item.email }}
-                      </span>
-                    </div>
-                  </button>
-                </div>
-              </div>
+              <MentionDropdown
+                ref="mentionDropdownRef"
+                :open="mentionOpen"
+                :loading="mentionLoading"
+                :results="mentionResults"
+                :active-index="mentionIndex"
+                :get-initials="getMentionInitials"
+                @select="handleMentionMouseDown"
+              />
             </div>
           </UContainer>
         </div>
