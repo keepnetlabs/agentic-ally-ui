@@ -16,7 +16,9 @@
       "Bash(cd:*)",
       "Bash(grep:*)",
       "Bash(xargs cat:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Read(//c/Users/user/.claude/projects/c--Users-user-Desktop-Agentic-Ally-fleet-v2-main-platform/45b5bdf8-69df-4fb3-9fff-7cb56f28af27/tool-results/**)",
+      "Bash(npx nuxi typecheck)"
     ],
     "deny": [],
     "ask": []

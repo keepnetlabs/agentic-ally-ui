@@ -581,4 +581,66 @@ export function showInCanvas(canvasRef: any, content: string) {
     }
 }
 
+// ============================================
+// Report extraction
+// ============================================
 
+export type ReportCardPayload = {
+    reportId: string
+    version: number
+    title: string
+    subtitle?: string
+    pageTarget: number
+    sectionCount: number
+    report: import('../types/report').Report
+}
+
+/**
+ * Extract report data from agent message.
+ * Looks for ::ui:report_generated:: tag or uiSignals.
+ */
+export function extractReportFromMessage(msg: any): ReportCardPayload | null {
+    const extractAndDecode = (text: string): ReportCardPayload | null => {
+        const match = text.match(
+            /::ui:report_generated::([\s\S]+?)::\/ui:report_generated::/
+        )
+        if (!match?.[1]) return null
+        try {
+            return JSON.parse(base64ToUtf8(match[1].trim()))
+        } catch {
+            return null
+        }
+    }
+
+    // 1) MASTRA V1: Check uiSignals
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const reportSignal = msg.uiSignals.find((s: any) => s.signal === 'report_generated')
+        if (reportSignal?.message) {
+            try {
+                const match = reportSignal.message.match(/::ui:report_generated::([^:]+)::/)
+                if (match?.[1]) {
+                    return JSON.parse(base64ToUtf8(match[1].trim()))
+                }
+            } catch (error) {
+                console.error('Failed to parse report_generated from uiSignals:', error)
+            }
+        }
+    }
+
+    // 2) Check stream parts
+    const parts = msg?.parts || []
+    for (const part of parts) {
+        if (part?.type === 'text' && part?.text) {
+            const result = extractAndDecode(part.text)
+            if (result) return result
+        }
+    }
+
+    // 3) Fallback: content string
+    const content = getAllStreamText(msg)
+    if (content) {
+        return extractAndDecode(content)
+    }
+
+    return null
+}

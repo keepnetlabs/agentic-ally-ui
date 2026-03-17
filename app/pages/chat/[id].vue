@@ -25,9 +25,11 @@ import {
   extractLandingPageFromMessage,
   extractAvatarSelectionFromMessage,
   extractVoiceSelectionFromMessage,
+  extractReportFromMessage,
   type AvatarSelectionPayload,
   type VoiceSelectionPayload,
   type VishingNextStepItem,
+  type ReportCardPayload,
   getSanitizedContentForTemplate,
   getAllStreamText,
   showInCanvas as showInCanvasUtil
@@ -409,6 +411,22 @@ const handleCreateVishingNextStep = (nextStep: VishingNextStepItem) => {
   nextTick(() => getPromptInputElement(promptRef)?.focus())
 }
 
+// ─── Report Viewer + Print ───
+const showReportViewer = ref(false)
+const showReportPrint = ref(false)
+const activeReport = ref<ReportCardPayload | null>(null)
+
+const handleViewReport = (report: ReportCardPayload) => {
+  activeReport.value = report
+  showReportViewer.value = true
+}
+
+const handlePrintReport = (report?: ReportCardPayload) => {
+  if (report) activeReport.value = report
+  showReportViewer.value = false
+  showReportPrint.value = true
+}
+
 const handleUiSelection = (value: string) => {
   const choice = (value || '').trim()
   if (!choice || status.value === 'streaming') return
@@ -780,6 +798,14 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                   :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
                   :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"
                 />
+
+                <!-- Report UI -->
+                <ReportCard
+                  v-if="extractReportFromMessage(message)"
+                  :report="extractReportFromMessage(message)!"
+                  @view="handleViewReport"
+                  @print="handlePrintReport"
+                />
               </template>
             </UChatMessages>
 
@@ -848,6 +874,24 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
       </div>
     </template>
   </UDashboardPanel>
+
+  <!-- Report Viewer Modal -->
+  <ReportViewer
+    v-if="showReportViewer && activeReport"
+    :report="activeReport.report"
+    :report-id="activeReport.reportId"
+    :version="activeReport.version"
+    @close="showReportViewer = false"
+    @print="handlePrintReport()"
+  />
+
+  <!-- Report Print View (PDF export) -->
+  <ReportPrintView
+    v-if="showReportPrint && activeReport"
+    :report="activeReport.report"
+    :report-id="activeReport.reportId"
+    @close="showReportPrint = false"
+  />
 </template>
 
 <style scoped>
