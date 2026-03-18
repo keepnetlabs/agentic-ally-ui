@@ -2,7 +2,8 @@ const UI_SIGNAL_TYPES = [
   'phishing_email',
   'landing_page',
   'smishing_sms',
-  'smishing_landing_page'
+  'smishing_landing_page',
+  'report_generated'
 ] as const
 
 type UiSignal = { signal: string; message: string }
@@ -58,6 +59,14 @@ const extractWrappedSignals = (content: string): UiSignal[] => {
     nextSignals.push({
       signal: 'smishing_landing_page',
       message: `::ui:smishing_landing_page::${smishingLandingMatch[1].trim()}::/ui:smishing_landing_page::`
+    })
+  }
+
+  const reportMatch = content.match(/::ui:report_generated::([\s\S]+?)::\/ui:report_generated::/)
+  if (reportMatch?.[1]) {
+    nextSignals.push({
+      signal: 'report_generated',
+      message: `::ui:report_generated::${reportMatch[1].trim()}::/ui:report_generated::`
     })
   }
 

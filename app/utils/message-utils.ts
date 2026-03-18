@@ -342,8 +342,8 @@ export function extractVishingCallTranscriptFromMessage(msg: any): VishingCallTr
 }
 
 // Get sanitized content for template (remove UI signals)
-export function getSanitizedContentForTemplate(msg: any): string {
-    const content = (msg?.content || '') + ''
+export function getSanitizedContentForTemplate(msg: unknown): string {
+    const content = ((msg as { content?: unknown })?.content ?? '') + ''
     return content
         .replace(/::ui:canvas_open::([\s\S]+?)::\/ui:canvas_open::/g, '')
         .replace(/::ui:canvas_open::([^\s\n]+)\s*/g, '')
@@ -357,6 +357,7 @@ export function getSanitizedContentForTemplate(msg: any): string {
         .replace(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/g, '')
         .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
         .replace(/::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/g, '')
+        .replace(/::ui:report_generated::([\s\S]+?)::\/ui:report_generated::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
         .replace(/::heartbeat::/g, '')
         .replace(/\[Company Selected:[^\]]*\]\s*/g, '')
@@ -425,6 +426,7 @@ export function getSanitizedTitle(rawTitle: string): string {
         .replace(/::ui:vishing_call_started::([\s\S]+?)::\/ui:vishing_call_started::/g, '')
         .replace(/::ui:vishing_call_transcript::([\s\S]+?)::\/ui:vishing_call_transcript::/g, '')
         .replace(/::ui:deepfake_video_generating::([\s\S]+?)::\/ui:deepfake_video_generating::/g, '')
+        .replace(/::ui:report_generated::([\s\S]+?)::\/ui:report_generated::/g, '')
         .replace(/::ui:(training_uploaded|phishing_uploaded|smishing_uploaded|training_assigned|phishing_assigned|smishing_assigned|target_user|target_group)::([\s\S]*?::\/ui:\1::)?(\n|\s)*/g, '')
         .replace(/::ui:target_user::[^\n]*/g, '')
         .replace(/::\/ui:target_user::/g, '')
@@ -636,8 +638,8 @@ export function extractReportFromMessage(msg: any): ReportCardPayload | null {
         }
     }
 
-    // 3) Fallback: content string
-    const content = getAllStreamText(msg)
+    // 3) Fallback: raw content string (same pattern as phishing extract)
+    const content = (msg?.content || '') + ''
     if (content) {
         return extractAndDecode(content)
     }

@@ -31,9 +31,9 @@ defineExpose({
     @mouseenter="showActions = true"
     @mouseleave="showActions = false"
   >
-    <!-- Regenerate button — top right, visible on hover -->
+    <!-- Regenerate button — hidden until API integration is complete -->
     <div
-      v-show="showActions && !isRegenerating"
+      v-show="false"
       class="absolute top-3 right-3 z-10 flex items-center gap-1"
     >
       <UTooltip text="Regenerate this section">
@@ -46,9 +46,9 @@ defineExpose({
       </UTooltip>
     </div>
 
-    <!-- Regenerating overlay -->
+    <!-- Regenerating overlay — hidden until API integration is complete -->
     <div
-      v-if="isRegenerating"
+      v-if="false"
       class="absolute inset-0 z-10 flex items-center justify-center bg-white/80 dark:bg-gray-900/80 rounded-xl backdrop-blur-sm"
     >
       <div class="flex items-center gap-2 text-sm text-gray-500">

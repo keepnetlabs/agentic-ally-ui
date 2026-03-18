@@ -67,7 +67,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
           <!-- Keepnet Header Band -->
           <div class="page-header">
             <div class="flex items-center justify-between">
-              <span class="text-sm font-bold text-white tracking-wide">{{ report.meta.branding?.companyName || 'Keepnet Labs' }}</span>
+              <img
+                :src="report.meta.branding?.logoUrl || 'https://imagedelivery.net/KxWh-mxPGDbsqJB3c5_fmA/f88de4cf-2fcd-4090-aca4-d5241c199b00/public'"
+                alt="Logo"
+                class="h-7"
+              />
               <span class="text-xs text-white/60 font-medium">{{ report.meta.title }}</span>
             </div>
           </div>
@@ -87,21 +91,20 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
             </template>
           </div>
 
-          <!-- Keepnet Footer -->
+          <!-- Keepnet Footer (navy like header) -->
           <div class="page-footer">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <img
-                  v-if="report.meta.branding?.logoUrl"
-                  :src="report.meta.branding.logoUrl"
+                  :src="report.meta.branding?.logoUrl || 'https://imagedelivery.net/KxWh-mxPGDbsqJB3c5_fmA/f88de4cf-2fcd-4090-aca4-d5241c199b00/public'"
                   alt="Logo"
                   class="h-3"
                 />
-                <span class="text-[8px] text-[#9CA3AF]">{{ report.meta.title }}</span>
+                <span class="text-[8px] text-white/60">{{ report.meta.title }}</span>
               </div>
               <div class="flex items-center gap-3">
-                <span class="text-[8px] text-[#9CA3AF]">Page {{ page.number }} of {{ totalPages }}</span>
-                <span class="text-[8px] text-[#0B326F] font-semibold">info@keepnetlabs.com</span>
+                <span class="text-[8px] text-white/60">Page {{ page.number }} of {{ totalPages }}</span>
+                <span class="text-[8px] text-white font-semibold">info@keepnetlabs.com</span>
               </div>
             </div>
           </div>
@@ -138,8 +141,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 
 .page-footer {
   padding: 12px 40px;
-  border-top: 1px solid #ECEFF3;
-  background: #F9FAFB;
+  background: #0B326F;
   flex-shrink: 0;
 }
 

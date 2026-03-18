@@ -42,14 +42,39 @@ export interface ReasoningEvent {
   }
 }
 
+// ─── Tool Progress Types ───────────────────────────────────────
+export type ToolProgressStatus = 'started' | 'running' | 'completed' | 'error'
+
+export interface ToolProgressData {
+  toolCallId: string
+  toolName: string
+  status: ToolProgressStatus
+  message?: string
+  durationMs?: number
+  resultSummary?: string
+}
+
 export interface ToolProgressEvent {
   type: 'data-tool-progress'
-  data: Record<string, unknown>
+  data: ToolProgressData
+}
+
+// ─── Workflow Step Types ───────────────────────────────────────
+export type WorkflowStepStatus = 'pending' | 'running' | 'completed' | 'error'
+
+export interface WorkflowStepData {
+  workflowRunId: string
+  workflowName: string
+  stepIndex: number
+  totalSteps: number
+  stepName: string
+  status: WorkflowStepStatus
+  message?: string
 }
 
 export interface WorkflowStepEvent {
   type: 'data-workflow-step'
-  data: Record<string, unknown>
+  data: WorkflowStepData
 }
 
 export type StreamEvent =
@@ -161,8 +186,8 @@ export interface StreamEventHandlers {
   onReasoningStart?: (id: string) => void
   onReasoningDelta?: (id: string, text: string) => void
   onReasoningEnd?: (id: string) => void
-  onToolProgress?: (data: Record<string, unknown>) => void
-  onWorkflowStep?: (data: Record<string, unknown>) => void
+  onToolProgress?: (data: ToolProgressData) => void
+  onWorkflowStep?: (data: WorkflowStepData) => void
 }
 
 /**
@@ -305,7 +330,7 @@ export const useStreamEvents = (handlers: StreamEventHandlers = {}) => {
     // Tool Progress Events (data-tool-progress)
     // =====================================
     if (eventType === 'data-tool-progress') {
-      const data = e.data as Record<string, unknown> | undefined
+      const data = e.data as ToolProgressData | undefined
       if (data) handlers.onToolProgress?.(data)
       return
     }
@@ -314,7 +339,7 @@ export const useStreamEvents = (handlers: StreamEventHandlers = {}) => {
     // Workflow Step Events (data-workflow-step)
     // =====================================
     if (eventType === 'data-workflow-step') {
-      const data = e.data as Record<string, unknown> | undefined
+      const data = e.data as WorkflowStepData | undefined
       if (data) handlers.onWorkflowStep?.(data)
       return
     }

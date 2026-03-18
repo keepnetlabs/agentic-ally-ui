@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch, onBeforeUnmount } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useFetch, createError, refreshNuxtData } from 'nuxt/app'
-// @ts-ignore - Nuxt auto-imports are typed via generated #imports during dev
+import { useRoute } from 'vue-router'
+import { useFetch, createError } from 'nuxt/app'
 import { useToast } from '#imports'
 import { useLLM } from '../../composables/useLLM'
 import { useCanvas } from '../../composables/useCanvas'
@@ -47,7 +46,6 @@ const components = {
 }
 
 const route = useRoute()
-const router = useRouter()
 const toast = useToast()
 const clipboard = useClipboard()
 const { model } = useLLM()
@@ -64,7 +62,6 @@ const chatId = String(route.params.id)
 // Restore the original line below after the build if Customer Service should come back.
 // const BOT_TYPE_KEY = 'agentic-ally-bot-type'
 // const botType = (route.query.botType as string) || (typeof window !== 'undefined' ? localStorage.getItem(BOT_TYPE_KEY) : null) || 'chat'
-const botType = 'chat'
 
 const chatUrl = buildUrl(`/api/chats/${chatId}`)
 
@@ -115,7 +112,7 @@ const saveMessageWithRetry = async (
     // Check deadline first
     if (elapsed > deadline) {
       console.error('Message save deadline exceeded after', attempt, 'attempts')
-      const { title, message, icon } = parseError(error)
+      const { message, icon } = parseError(error)
       toast.add({
         id: 'message-save-error',
         title: 'Failed to save message',
@@ -130,7 +127,7 @@ const saveMessageWithRetry = async (
     // Check max retries
     if (attempt >= maxRetries) {
       console.error('Max retries exceeded for message save')
-      const { title, message, icon } = parseError(error)
+      const { message, icon } = parseError(error)
       toast.add({
         id: 'message-save-error',
         title: 'Failed to save message',
@@ -168,12 +165,11 @@ const chatHeaders = computed(() => ({
   ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {})
 }))
 
-// @ts-ignore - Nuxt allows top-level await in script setup
 const { data: chat, refresh: refreshChat } = await useFetch<ServerChat>(chatUrl, {
   key: `chat-${chatId}`,
   immediate: false,
   lazy: true,
-  credentials: 'include',  // Allow cookies in cross-origin requests
+  credentials: 'include', // Allow cookies in cross-origin requests
   headers: chatHeaders,
   onResponseError({ response }) {
     if (response?.status === 401 && accessToken.value) {
@@ -272,13 +268,13 @@ const chatClient = new Chat({
       return response
     }
   }),
-  messages: (chat.value?.messages ?? []).map((m: any) => ({
+  messages: (chat.value?.messages ?? []).map((m: { id: string, role: string, content?: string, parts?: unknown[] }) => ({
     id: m.id,
-    role: m.role,
+    role: m.role as 'system' | 'user' | 'assistant',
     content: m.content,
     parts: m.parts ?? []
-  })),
-  async onFinish(data: any) {
+  })) as unknown as InstanceType<typeof Chat>['messages'],
+  async onFinish(data: Record<string, unknown>) {
     // AI SDK calls onFinish in a finally block — it fires even on errors.
     // Skip saving and state resets when the request actually failed,
     // otherwise we'd save empty messages to DB and reset the retry counter
@@ -288,15 +284,16 @@ const chatClient = new Chat({
     }
 
     // Extract the actual message from the data structure
-    const message = data.message || data
+    const message = (data.message || data) as { id?: string, role?: string, content?: string }
 
     // Mark finished IMMEDIATELY to unblock UI (streaming indicator + prompt input).
     // Must happen before the async save which can take seconds with retries.
     lastFinishedMessageId.value = message?.id || null
     streamSilentRetryCount.value = 0
+    // Keep workflow steps visible after stream ends — cleared on next stream start
 
     // Save AI response to database with retry logic (non-blocking for UI)
-    if (message && message.role === 'assistant') {
+    if (message && message.role === 'assistant' && message.id) {
       const content = message.content || parseAIMessage(message)
 
       // Save with exponential backoff retry
@@ -306,7 +303,7 @@ const chatClient = new Chat({
       checkAndTriggerCanvas(message)
     }
   },
-  onError(err: any) {
+  onError(err: unknown) {
     console.error('Chat stream error:', err)
     const { title, message, icon, canRetry } = parseError(err)
 
@@ -337,23 +334,27 @@ const chatClient = new Chat({
       icon,
       color: 'error',
       duration: 15000,
-      actions: canRetry ? [{
-        label: 'Retry',
-        color: 'error' as const,
-        variant: 'outline' as const,
-        onClick: () => {
-          streamSilentRetryCount.value = 0
-          lastFinishedMessageId.value = null
-          chatClient.regenerate()
-        }
-      }] : []
+      actions: canRetry
+        ? [{
+            label: 'Retry',
+            color: 'error' as const,
+            variant: 'outline' as const,
+            onClick: () => {
+              streamSilentRetryCount.value = 0
+              lastFinishedMessageId.value = null
+              chatClient.regenerate()
+            }
+          }]
+        : []
     })
   }
 })
 
 const messagesVersion = ref(0)
 // MASTRA V1: Store UI signals separately (reactive Map by message ID)
-const uiSignalsMap = ref<Map<string, any[]>>(new Map())
+const uiSignalsMap = ref<Map<string, unknown[]>>(new Map())
+// Workflow step progress (keyed by workflowRunId → latest step data)
+const workflowStepsMap = ref<Map<string, import('../../composables/useStreamEvents').WorkflowStepData>>(new Map())
 const { updateUiSignalsFromContent } = useUiSignalsSync(uiSignalsMap.value, messagesVersion)
 
 const baseMessages = createMessages(chatClient, parseAIReasoning, parseAIMessage, messagesVersion)
@@ -362,29 +363,38 @@ const baseMessages = createMessages(chatClient, parseAIReasoning, parseAIMessage
 const messages = computed(() => {
   // Access Map to make this computed reactive to Map changes
   const signalsMap = uiSignalsMap.value
-  return baseMessages.value.map((m: any) => ({
+  return baseMessages.value.map((m: { id: string, role?: string, content?: string, parts?: unknown[], [key: string]: unknown }) => ({
     ...m,
     uiSignals: signalsMap.get(m.id) || []
   }))
 })
+
+// Cast for UChatMessages which expects Message[] from @ai-sdk/vue (our messages have extra props like uiSignals)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const chatMessagesForUi = computed(() => messages.value as any)
+
 watch(chat, (value) => {
   if (!value?.messages?.length) {
     return
   }
-  chatClient.messages = value.messages.map((m: any) => ({
+  chatClient.messages = value.messages.map((m: { id: string, role: string, content?: string, parts?: unknown[] }) => ({
     id: m.id,
     role: m.role,
     content: m.content,
     parts: m.parts ?? []
-  }))
+  })) as unknown as typeof chatClient.messages
   messagesVersion.value += 1
 })
 const status = createStatus(chatClient)
 const error = createErrorComputed(chatClient)
 const lastFinishedMessageId = ref<string | null>(null)
 const promptStatus = computed(() => {
-  if (error.value && !input.value) return 'error'
-  if (status.value === 'streaming') return 'streaming'
+  if (error.value && !input.value) {
+    return 'error'
+  }
+  if (status.value === 'streaming') {
+    return 'streaming'
+  }
   return 'ready'
 })
 
@@ -402,6 +412,8 @@ const reload = createReload(chatClient)
 const handlePromptSubmit = () => {
   closeMentionMenu()
   applyTargetTags()
+  // Clear previous workflow progress before starting new stream
+  workflowStepsMap.value.clear()
   handleSubmit()
   clearSelectedTargets()
 }
@@ -419,12 +431,57 @@ const activeReport = ref<ReportCardPayload | null>(null)
 const handleViewReport = (report: ReportCardPayload) => {
   activeReport.value = report
   showReportViewer.value = true
+  // Notify parent iframe to expand
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: 'CANVAS_CLICK' }, '*')
+  }
 }
 
 const handlePrintReport = (report?: ReportCardPayload) => {
   if (report) activeReport.value = report
   showReportViewer.value = false
   showReportPrint.value = true
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: 'CANVAS_CLICK' }, '*')
+  }
+}
+
+function getToolArgs(part: { toolInvocation?: { args?: unknown } }): Record<string, unknown> {
+  return (part.toolInvocation?.args ?? {}) as Record<string, unknown>
+}
+
+function getToolInvocationParts(msg: { parts?: Array<{ type?: string, toolInvocation?: { toolCallId?: string, toolName?: string, state?: string, args?: Record<string, unknown>, result?: unknown } }> }) {
+  return (msg.parts ?? []).filter(
+    p => p.type === 'tool-invocation' && p.toolInvocation?.toolName !== 'show_reasoning'
+  )
+}
+
+function getAvatarPayload(messageId: string | undefined): AvatarSelectionPayload | null {
+  if (!messageId) return null
+  return avatarSelectionByMessageId.value.get(messageId) ?? null
+}
+
+function getAvatarPayloadOrFail(messageId: string | undefined): AvatarSelectionPayload {
+  if (!messageId) throw new Error('messageId is required')
+  return avatarSelectionByMessageId.value.get(messageId)!
+}
+
+function getVoicePayload(messageId: string | undefined): VoiceSelectionPayload | null {
+  if (!messageId) return null
+  return voiceSelectionByMessageId.value.get(messageId) ?? null
+}
+
+function getVoicePayloadOrFail(messageId: string | undefined): VoiceSelectionPayload {
+  if (!messageId) throw new Error('messageId is required')
+  return voiceSelectionByMessageId.value.get(messageId)!
+}
+
+function getReportPayload(msg: unknown): ReportCardPayload | null {
+  return extractReportFromMessage(msg) ?? null
+}
+
+function getReportPayloadOrFail(msg: unknown): ReportCardPayload {
+  return extractReportFromMessage(msg)!
 }
 
 const handleUiSelection = (value: string) => {
@@ -444,7 +501,6 @@ const handleUiSelection = (value: string) => {
   input.value = lines.join('\n')
   nextTick(() => getPromptInputElement(promptRef)?.focus())
 }
-
 
 const hasTriggeredInitialReload = ref(false)
 watch(chat, (value) => {
@@ -518,15 +574,15 @@ const voiceSelectionByMessageId = computed(() => {
   return result
 })
 
-const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, hasCanvasOpenedForCurrentMessage, hasEmailRenderedForCurrentMessage, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
+const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
 
 // Wrap canvas open functions to track canvas type
-const openCanvasWithEmail = (email: any, messageId: string) => {
+const openCanvasWithEmail = (email: unknown, messageId: string) => {
   openCanvasType.value = 'email'
-  originalOpenCanvasWithEmail(email, messageId)
+  originalOpenCanvasWithEmail(email as string | { template: string, fromAddress?: string, fromName?: string, subject?: string }, messageId)
 }
 
-const openCanvasWithLandingPage = (landingPage: any, messageId: string) => {
+const openCanvasWithLandingPage = (landingPage: unknown, messageId: string) => {
   openCanvasType.value = 'landing-page'
   originalOpenCanvasWithLandingPage(landingPage, messageId)
 }
@@ -535,28 +591,30 @@ const openCanvasWithLandingPage = (landingPage: any, messageId: string) => {
 const assistantConfig = computed(() => {
   // Check if the last message is currently streaming
   const lastMessage = messages.value[messages.value.length - 1]
-  const isStreaming = status.value === 'streaming' &&
-    lastMessage?.role === 'assistant' &&
-    lastMessage?.id !== null &&
-    lastFinishedMessageId.value !== lastMessage?.id
+  const isStreaming = status.value === 'streaming'
+    && lastMessage?.role === 'assistant'
+    && lastMessage?.id !== null
+    && lastFinishedMessageId.value !== lastMessage?.id
 
   return {
-    actions: isStreaming ? [] : [
-      { label: 'Copy', icon: copied.value ? 'i-lucide-copy-check' : 'i-lucide-copy', onClick: copy },
-      { label: 'Canvas', icon: 'i-lucide-canvas', onClick: showInCanvas }
-    ]
+    actions: isStreaming
+      ? []
+      : [
+          { label: 'Copy', icon: copied.value ? 'i-lucide-copy-check' : 'i-lucide-copy', onClick: copy },
+          { label: 'Canvas', icon: 'i-lucide-canvas', onClick: showInCanvas }
+        ]
   }
 })
 
-function copy(e: MouseEvent | null, message: any) {
-  clipboard.copy(message.content)
+function copy(_e: MouseEvent | null, message: { content?: string }) {
+  clipboard.copy(message.content ?? '')
   copied.value = true
   setTimeout(() => {
     copied.value = false
   }, 2000)
 }
 
-function copyTrainingUrl(message: any) {
+function copyTrainingUrl(message: unknown) {
   const url = extractTrainingUrlFromMessage(message)
   if (url) {
     clipboard.copy(url)
@@ -567,8 +625,8 @@ function copyTrainingUrl(message: any) {
   }
 }
 
-const showInCanvas = (e: MouseEvent, message: any) => {
-  showInCanvasUtil(canvasRef, message.content)
+const showInCanvas = (_e: MouseEvent, message: { id?: string, content?: string }) => {
+  showInCanvasUtil(canvasRef, message.content ?? '')
 }
 
 onMounted(() => {
@@ -576,7 +634,7 @@ onMounted(() => {
   if (isCanvasVisible.value) {
     hideCanvas()
   }
-  
+
   if (chat.value?.messages.length === 1 && !hasTriggeredInitialReload.value) {
     hasTriggeredInitialReload.value = true
     reload()
@@ -610,7 +668,7 @@ watch(
       lastProcessedPartsCount.value = 0
     }
 
-    const parts = last.parts || []
+    const parts = (last.parts || []) as Array<{ type?: string, data?: { signal?: string, message?: string, workflowRunId?: string, stepIndex?: number } }>
 
     // 1️⃣ Process new data-* events (MASTRA V1)
     for (let i = lastProcessedPartsCount.value; i < parts.length; i++) {
@@ -619,7 +677,7 @@ watch(
         handleDataEvent(part)
 
         // Find the message in chatClient
-        const clientMessage = chatClient.messages.find((m: any) => m.id === last.id) as any
+        const clientMessage = chatClient.messages.find((m: { id?: string }) => m.id === last.id) as { id?: string, role?: string, parts?: unknown[] } | undefined
         if (clientMessage) {
           // 🔧 Ensure data-reasoning events are in parts for parseAIReasoning
           if (part.type === 'data-reasoning' && !clientMessage.parts?.includes(part)) {
@@ -633,14 +691,21 @@ watch(
             if (!uiSignalsMap.value.has(messageId)) {
               uiSignalsMap.value.set(messageId, [])
             }
-            const signals = uiSignalsMap.value.get(messageId)!
+            const signals = uiSignalsMap.value.get(messageId) ?? []
             // Avoid duplicates
             const exists = signals.some(
-              (s: any) => s.signal === part.data.signal && s.message === part.data.message
+              (s: unknown) => (s as { signal?: string, message?: string }).signal === part.data?.signal && (s as { signal?: string, message?: string }).message === part.data?.message
             )
             if (!exists) {
               signals.push(part.data)
             }
+          }
+
+          // 🔧 Store workflow step progress in reactive Map
+          if (part.type === 'data-workflow-step' && part.data) {
+            const stepData = part.data as import('../../composables/useStreamEvents').WorkflowStepData
+            const key = `${stepData.workflowRunId}:${stepData.stepIndex}`
+            workflowStepsMap.value.set(key, stepData)
           }
 
           messagesVersion.value += 1 // Trigger reactivity
@@ -658,7 +723,7 @@ watch(
 )
 
 watch(
-  () => messages.value.map((message: any) => message.id).join(','),
+  () => messages.value.map((message: { id: string }) => message.id).join(','),
   () => {
     for (const message of messages.value) {
       if (message?.role === 'assistant') {
@@ -675,223 +740,274 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
 
   // Update chat.value messages
   if (chat.value?.messages) {
-    const message = chat.value.messages.find((m: any) => m.id === messageId)
+    const message = chat.value.messages.find((m: { id: string }) => m.id === messageId) as { id: string, content?: string } | undefined
     if (message) {
       message.content = newContent
     }
   }
   // Update Chat client's internal messages array (critical for regenerate)
-  const clientMessage = chatClient.messages.find((m: any) => m.id === messageId)
+  const clientMessage = chatClient.messages.find((m: { id: string }) => m.id === messageId) as { id: string, content?: string } | undefined
   if (clientMessage) {
     clientMessage.content = newContent
   }
 }
-
 </script>
 
 <template>
-  <UDashboardPanel id="chat" class="relative" :ui="{ body: 'p-0 sm:p-0' }">
-    <template #header>
-      <DashboardNavbar>
-        <template #right></template>
-      </DashboardNavbar>
-    </template>
+  <div class="chat-page w-full min-w-0">
+    <UDashboardPanel
+      id="chat"
+      class="relative"
+      :ui="{ body: 'p-0 sm:p-0' }"
+    >
+      <template #header>
+        <DashboardNavbar>
+          <template #right />
+        </DashboardNavbar>
+      </template>
 
-    <template #body>
-      <div class="flex h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden">
-        <!-- Chat Area -->
-        <div 
-          class="flex flex-col transition-all duration-300 overflow-y-auto min-h-0"
-          :class="{ 'w-full lg:w-1/4': isCanvasVisible, 'flex-1': !isCanvasVisible, 'lg:pr-4': isCanvasVisible }"
-        >
-          <UContainer class="flex-1 flex flex-col gap-4 sm:gap-6">
-            <UChatMessages
-              :messages="messages"
-              :status="status"
-              :assistant="assistantConfig"
-              class="lg:pt-(--ui-header-height) pb-4 sm:pb-6"
-              :spacing-offset="160"
+      <template #body>
+        <div class="flex h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden">
+          <!-- Chat Area -->
+          <div
+            class="flex flex-col transition-all duration-300 overflow-y-auto min-h-0"
+            :class="{
+              'w-full lg:w-1/4 lg:pr-4 min-w-0': isCanvasVisible,
+              'flex-1 w-full min-w-0': !isCanvasVisible
+            }"
+          >
+            <div
+              :class="[
+                'flex-1 flex flex-col min-h-0',
+                !isCanvasVisible && 'w-full max-w-4xl mx-auto'
+              ]"
             >
-              <template #content="{ message }">
-                <!-- Landing Page UI -->
-                <LandingPageCard
-                  v-if="extractLandingPageFromMessage(message)"
-                  :landing-page="extractLandingPageFromMessage(message)"
-                  :is-canvas-visible="openCanvasType === 'landing-page'"
-                  @open="(landingPage) => openCanvasWithLandingPage(landingPage, message.id)"
-                  @toggle="(landingPage) => openCanvasType === 'landing-page' ? wrappedHideCanvas() : openCanvasWithLandingPage(landingPage, message.id)"
-                />
+              <UContainer class="flex-1 flex flex-col gap-4 sm:gap-6">
+                <UChatMessages
+                  :messages="chatMessagesForUi"
+                  :status="status"
+                  :assistant="assistantConfig"
+                  class="lg:pt-(--ui-header-height) pb-4 sm:pb-6"
+                  :spacing-offset="160"
+                >
+                  <template #content="{ message }">
+                    <!-- Landing Page UI -->
+                    <LandingPageCard
+                      v-if="extractLandingPageFromMessage(message)"
+                      :landing-page="extractLandingPageFromMessage(message)"
+                      :is-canvas-visible="openCanvasType === 'landing-page'"
+                      @open="(landingPage) => openCanvasWithLandingPage(landingPage, message.id)"
+                      @toggle="(landingPage) => openCanvasType === 'landing-page' ? wrappedHideCanvas() : openCanvasWithLandingPage(landingPage, message.id)"
+                    />
 
-                <!-- Training URL UI -->
-                <TrainingUrlCard
-                  v-if="extractTrainingUrlFromMessage(message)"
-                  :url="extractTrainingUrlFromMessage(message) || ''"
-                  :is-canvas-visible="isCanvasVisible"
-                  @open="openCanvasWithUrl"
-                  @toggle="(url) => isCanvasVisible ? wrappedHideCanvas() : openCanvasWithUrl(url)"
-                  @copy="() => copyTrainingUrl(message)"
-                />
+                    <!-- Training URL UI -->
+                    <TrainingUrlCard
+                      v-if="extractTrainingUrlFromMessage(message)"
+                      :url="extractTrainingUrlFromMessage(message) || ''"
+                      :is-canvas-visible="isCanvasVisible"
+                      @open="openCanvasWithUrl"
+                      @toggle="(url) => isCanvasVisible ? wrappedHideCanvas() : openCanvasWithUrl(url)"
+                      @copy="() => copyTrainingUrl(message)"
+                    />
 
-                <!-- Phishing Email UI - show all emails -->
-                <template v-for="(emails, ei) in [extractAllPhishingEmailsFromMessage(message)]" :key="ei">
-                  <PhishingEmailCard
-                    v-for="(email, index) in emails"
-                    :key="index"
-                    :email="email"
-                    :index="index"
-                    :total-count="emails.length"
-                    :is-canvas-visible="openCanvasType === 'email'"
-                    :is-quishing="email.isQuishing"
-                    @open="(email) => openCanvasWithEmail(email, message.id)"
-                    @toggle="(email) => openCanvasType === 'email' ? wrappedHideCanvas() : openCanvasWithEmail(email, message.id)"
-                  />
-                </template>
+                    <!-- Phishing Email UI - show all emails -->
+                    <template
+                      v-for="(emails, ei) in [extractAllPhishingEmailsFromMessage(message)]"
+                      :key="ei"
+                    >
+                      <PhishingEmailCard
+                        v-for="(email, index) in emails"
+                        :key="`${ei}-${index}`"
+                        :email="email"
+                        :index="index"
+                        :total-count="emails.length"
+                        :is-canvas-visible="openCanvasType === 'email'"
+                        :is-quishing="email.isQuishing"
+                        @open="(email) => openCanvasWithEmail(email, message.id)"
+                        @toggle="(email) => openCanvasType === 'email' ? wrappedHideCanvas() : openCanvasWithEmail(email, message.id)"
+                      />
+                    </template>
 
-                <!-- Reasoning (shown above content, also during streaming) -->
-                <ReasoningSection :reasoning="message.reasoning" />
+                    <!-- Reasoning (shown above content, also during streaming) -->
+                    <ReasoningSection :reasoning="message.reasoning" />
 
-                <!-- Streaming: show thinking indicator -->
-                <StreamingIndicator 
-                  :is-streaming="status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id"
-                />
+                    <!-- Tool Call Cards (AI SDK v5 tool-invocation parts) -->
+                    <template v-if="message.parts?.length">
+                      <ToolCallCard
+                        v-for="(part, partIdx) in getToolInvocationParts(message)"
+                        :key="part.toolInvocation?.toolCallId ?? `part-${partIdx}`"
+                        :tool-name="part.toolInvocation?.toolName || 'unknown'"
+                        :status="part.toolInvocation?.state === 'result'
+                          ? 'completed'
+                          : part.toolInvocation?.state === 'call'
+                            ? 'running'
+                            : 'pending'"
+                        :args="getToolArgs(part)"
+                        :result="part.toolInvocation?.state === 'result' ? part.toolInvocation?.result : undefined"
+                      />
+                    </template>
 
-                <!-- Message text (above Vishing card so "Arama başlatıldı..." appears first) -->
-                <div v-if="!(status === 'streaming' && message.role === 'assistant' && message.id === messages[messages.length - 1]?.id && lastFinishedMessageId !== message.id)" class="whitespace-pre-line">
-                  <MDCCached
-                    :value="getSanitizedContentForTemplate(message)"
-                    :cache-key="message.id"
-                    unwrap="p"
-                    :components="components"
-                    :parser-options="{ highlight: false }"
+                    <!-- Workflow Step Progress (visible during and after streaming until next prompt) -->
+                    <WorkflowProgress
+                      v-if="workflowStepsMap.size > 0
+                        && message.role === 'assistant'
+                        && message.id === messages[messages.length - 1]?.id"
+                      :steps="workflowStepsMap"
+                    />
+
+                    <!-- Streaming: show thinking indicator -->
+                    <StreamingIndicator
+                      :is-streaming="status === 'streaming'
+                        && message.role === 'assistant'
+                        && message.id === messages[messages.length - 1]?.id
+                        && lastFinishedMessageId !== message.id"
+                    />
+
+                    <!-- Message text (above Vishing card so "Arama başlatıldı..." appears first) -->
+                    <div
+                      v-if="!(status === 'streaming'
+                        && message.role === 'assistant'
+                        && message.id === messages[messages.length - 1]?.id
+                        && lastFinishedMessageId !== message.id)"
+                      class="whitespace-pre-line"
+                    >
+                      <MDCCached
+                        :value="getSanitizedContentForTemplate(message)"
+                        :cache-key="message.id"
+                        unwrap="p"
+                        :components="components"
+                        :parser-options="{ highlight: false }"
+                      />
+                    </div>
+
+                    <!-- Vishing Call UI (below message text) -->
+                    <VishingCallCard
+                      v-if="vishingUiByMessageId.get(message.id)?.started || vishingUiByMessageId.get(message.id)?.transcript"
+                      :started="vishingUiByMessageId.get(message.id)?.started || null"
+                      :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
+                      :summary="vishingUiByMessageId.get(message.id)?.summary || null"
+                      @create-next-step="handleCreateVishingNextStep"
+                    />
+
+                    <AvatarSelectionCard
+                      v-if="getAvatarPayload(message.id)"
+                      :payload="getAvatarPayloadOrFail(message.id)"
+                      @select="handleUiSelection"
+                    />
+
+                    <VoiceSelectionCard
+                      v-if="getVoicePayload(message.id)"
+                      :payload="getVoicePayloadOrFail(message.id)"
+                      @select="handleUiSelection"
+                    />
+
+                    <!-- Deepfake Video UI (below message text, like Vishing) -->
+                    <DeepfakeVideoCard
+                      v-if="deepfakeUiByMessageId.get(message.id)"
+                      :video-id="deepfakeUiByMessageId.get(message.id)?.videoId || ''"
+                      :status="deepfakeUiByMessageId.get(message.id)?.status || 'processing'"
+                      :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
+                      :video-url-caption="deepfakeUiByMessageId.get(message.id)?.videoUrlCaption || null"
+                      :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
+                      :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
+                      :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"
+                    />
+
+                    <!-- Report UI -->
+                    <ReportCard
+                      v-if="getReportPayload(message)"
+                      :report="getReportPayloadOrFail(message)"
+                      @view="handleViewReport"
+                      @print="handlePrintReport"
+                    />
+                  </template>
+                </UChatMessages>
+
+                <div
+                  ref="promptContainerRef"
+                  class="relative sticky bottom-2 z-10 [view-transition-name:chat-prompt] bg-white dark:bg-gray-900"
+                  @keydown.capture="handlePromptKeydown"
+                  @keyup="syncCursorIndex"
+                  @click="syncCursorIndex"
+                  @input="syncCursorIndex"
+                >
+                  <UChatPrompt
+                    ref="promptRef"
+                    v-model="input"
+                    :error="error"
+                    :disabled="status === 'streaming' || status === 'submitted'"
+                    placeholder="Type your message here, or use @ to mention someone"
+                    variant="subtle"
+                    autocomplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
+                    :class="[
+                      'chat-prompt-custom relative z-20',
+                      input.length === 0 ? 'force-default-height' : ''
+                    ]"
+                    @submit="handlePromptSubmit"
+                  >
+                    <UChatPromptSubmit
+                      :status="promptStatus"
+                      color="info"
+                      :ui="{
+                        base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
+                      }"
+                      @stop="stop"
+                      @reload="reload"
+                    />
+                  </UChatPrompt>
+
+                  <MentionDropdown
+                    ref="mentionDropdownRef"
+                    :open="mentionOpen"
+                    :loading="mentionLoading"
+                    :results="mentionResults"
+                    :active-index="mentionIndex"
+                    :get-initials="getMentionInitials"
+                    @select="handleMentionMouseDown"
                   />
                 </div>
-
-                <!-- Vishing Call UI (below message text) -->
-                <VishingCallCard
-                  v-if="vishingUiByMessageId.get(message.id)?.started || vishingUiByMessageId.get(message.id)?.transcript"
-                  :started="vishingUiByMessageId.get(message.id)?.started || null"
-                  :transcript="vishingUiByMessageId.get(message.id)?.transcript || null"
-                  :summary="vishingUiByMessageId.get(message.id)?.summary || null"
-                  @create-next-step="handleCreateVishingNextStep"
-                />
-
-                <AvatarSelectionCard
-                  v-if="avatarSelectionByMessageId.get(message.id)"
-                  :payload="avatarSelectionByMessageId.get(message.id)!"
-                  @select="handleUiSelection"
-                />
-
-                <VoiceSelectionCard
-                  v-if="voiceSelectionByMessageId.get(message.id)"
-                  :payload="voiceSelectionByMessageId.get(message.id)!"
-                  @select="handleUiSelection"
-                />
-
-                <!-- Deepfake Video UI (below message text, like Vishing) -->
-                <DeepfakeVideoCard
-                  v-if="deepfakeUiByMessageId.get(message.id)"
-                  :video-id="deepfakeUiByMessageId.get(message.id)?.videoId || ''"
-                  :status="deepfakeUiByMessageId.get(message.id)?.status || 'processing'"
-                  :video-url="deepfakeUiByMessageId.get(message.id)?.videoUrl || null"
-                  :video-url-caption="deepfakeUiByMessageId.get(message.id)?.videoUrlCaption || null"
-                  :thumbnail-url="deepfakeUiByMessageId.get(message.id)?.thumbnailUrl || null"
-                  :duration-sec="deepfakeUiByMessageId.get(message.id)?.durationSec || null"
-                  :error-message="deepfakeUiByMessageId.get(message.id)?.errorMessage || null"
-                />
-
-                <!-- Report UI -->
-                <ReportCard
-                  v-if="extractReportFromMessage(message)"
-                  :report="extractReportFromMessage(message)!"
-                  @view="handleViewReport"
-                  @print="handlePrintReport"
-                />
-              </template>
-            </UChatMessages>
-
-            <div
-              ref="promptContainerRef"
-              class="relative sticky bottom-2 z-10 [view-transition-name:chat-prompt] bg-white dark:bg-gray-900"
-              @keydown.capture="handlePromptKeydown"
-              @keyup="syncCursorIndex"
-              @click="syncCursorIndex"
-              @input="syncCursorIndex"
-            >
-              <UChatPrompt
-                ref="promptRef"
-                v-model="input"
-                :error="error"
-                placeholder="Type your message here, or use @ to mention someone"
-                variant="subtle"
-                autocomplete="off"
-                data-1p-ignore
-                data-lpignore="true"
-                data-form-type="other"
-                :class="[
-                  'chat-prompt-custom relative z-20',
-                  input.length === 0 ? 'force-default-height' : ''
-                ]"
-                @submit="handlePromptSubmit"
-              >
-                <UChatPromptSubmit
-                  :status="promptStatus"
-                  color="info"
-                  :ui="{ 
-                    base: 'dark:bg-black dark:text-white dark:border-white dark:hover:bg-gray-900'
-                  }"
-                  @stop="stop"
-                  @reload="reload"
-                />
-
-              </UChatPrompt>
-
-              <MentionDropdown
-                ref="mentionDropdownRef"
-                :open="mentionOpen"
-                :loading="mentionLoading"
-                :results="mentionResults"
-                :active-index="mentionIndex"
-                :get-initials="getMentionInitials"
-                @select="handleMentionMouseDown"
-              />
+              </UContainer>
             </div>
-          </UContainer>
+          </div>
+
+          <!-- Canvas Area -->
+          <div
+            v-if="isCanvasVisible"
+            class="w-full lg:w-3/4 min-w-0 border-l border-gray-200 dark:border-gray-800 transition-all duration-300 sticky top-(--ui-header-height) self-start h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden flex flex-col relative"
+          >
+            <ChatCanvas
+              ref="canvasRef"
+              class="flex-1 min-h-0"
+              @close="hideCanvas"
+              @clear="() => clearCanvasContent()"
+              @refresh="handleCanvasRefresh"
+            />
+          </div>
         </div>
+      </template>
+    </UDashboardPanel>
 
-        <!-- Canvas Area -->
-        <div 
-          v-if="isCanvasVisible"
-          class="w-full lg:w-3/4 border-l border-gray-200 dark:border-gray-800 transition-all duration-300 sticky top-(--ui-header-height) self-start h-[calc(100vh-var(--ui-header-height))] min-h-0 overflow-hidden flex flex-col relative"
-        >
-          <ChatCanvas
-            ref="canvasRef"
-            class="flex-1 min-h-0"
-            @close="hideCanvas"
-            @clear="() => clearCanvasContent()"
-            @refresh="handleCanvasRefresh"
-          />
-        </div>
-      </div>
-    </template>
-  </UDashboardPanel>
+    <!-- Report Viewer Modal -->
+    <ReportViewer
+      v-if="showReportViewer && activeReport"
+      :report="activeReport.report"
+      :report-id="activeReport.reportId"
+      :version="activeReport.version"
+      @close="showReportViewer = false"
+      @print="handlePrintReport()"
+    />
 
-  <!-- Report Viewer Modal -->
-  <ReportViewer
-    v-if="showReportViewer && activeReport"
-    :report="activeReport.report"
-    :report-id="activeReport.reportId"
-    :version="activeReport.version"
-    @close="showReportViewer = false"
-    @print="handlePrintReport()"
-  />
-
-  <!-- Report Print View (PDF export) -->
-  <ReportPrintView
-    v-if="showReportPrint && activeReport"
-    :report="activeReport.report"
-    :report-id="activeReport.reportId"
-    @close="showReportPrint = false"
-  />
+    <!-- Report Print View (PDF export) -->
+    <ReportPrintView
+      v-if="showReportPrint && activeReport"
+      :report="activeReport.report"
+      :report-id="activeReport.reportId"
+      @close="showReportPrint = false"
+    />
+  </div>
 </template>
 
 <style scoped>
@@ -915,5 +1031,21 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
   max-height: 32px !important;
   height: 32px !important;
   overflow: hidden;
+}
+
+/* 3 nokta indicator rengi - bg-elevated yerine primary */
+.chat-page :deep(.h-6.flex.items-center.gap-1.py-3 > span) {
+  background-color: var(--ui-primary) !important;
+}
+
+/* Assistant mesaj content: WorkflowProgress/Reasoning tam genişlik kaplasın (reasoning açılmadan da) */
+.chat-page :deep([data-role="assistant"]) {
+  width: 100%;
+  max-width: 100%;
+}
+.chat-page :deep([data-role="assistant"] .min-w-0) {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 0;
 }
 </style>
