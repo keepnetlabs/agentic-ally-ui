@@ -646,3 +646,46 @@ export function extractReportFromMessage(msg: any): ReportCardPayload | null {
 
     return null
 }
+
+// Extract smishing SMS from message
+// Supports both MASTRA V1 (uiSignals) and legacy (::ui:smishing_sms::) formats
+export function extractSmishingSmsFromMessage(msg: any): any | null {
+    // 1. MASTRA V1: Check uiSignals first
+    if (msg?.uiSignals && Array.isArray(msg.uiSignals)) {
+        const smsSignal = msg.uiSignals.find((s: any) => s.signal === 'smishing_sms')
+        if (smsSignal?.message) {
+            try {
+                const match = smsSignal.message.match(/::ui:smishing_sms::([^:]+)::/)
+                if (match?.[1]) {
+                    return JSON.parse(base64ToUtf8(match[1].trim()))
+                }
+            } catch (error) {
+                console.error('Failed to parse smishing_sms from uiSignals:', error)
+            }
+        }
+    }
+
+    // 2. Legacy: Parse from text content
+    const extractAndDecode = (text: string): any | null => {
+        const match = text.match(/::ui:smishing_sms::([\s\S]+?)::\/ui:smishing_sms::/)
+        if (!match?.[1]) return null
+        try {
+            return JSON.parse(base64ToUtf8(match[1].trim()))
+        } catch (error) {
+            console.error('Failed to decode base64 smishing sms:', error)
+            return null
+        }
+    }
+
+    // Check parts (streaming)
+    const parts = extractTextPartsForTemplate(msg)
+    for (const p of parts) {
+        const text = p?.delta || p?.text || ''
+        const sms = extractAndDecode(text)
+        if (sms) return sms
+    }
+
+    // Fallback: check final content
+    const content = (msg?.content || '') + ''
+    return extractAndDecode(content)
+}

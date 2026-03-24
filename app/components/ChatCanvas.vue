@@ -543,13 +543,31 @@ const handleSmishingSave = async (newTemplate: string) => {
   }
 
   try {
+    // 1. Save to KV backend (if smishingId available)
+    const smishingId = smsData.smishingId
+    if (smishingId) {
+      const saveUrl = buildUrl('/api/smishing/editor/save')
+      await secureFetch(saveUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          smishingId,
+          language: smsData.language,
+          smsKey: smsData.smsKey,
+          sms: { messages: [newTemplate] },
+        }
+      })
+    }
+
+    // 2. Update chat message content
     const currentMessageUrl = buildUrl(`/api/chats/${chatId}/messages/${messageId}`)
     const currentMessage = await secureFetch<ServerMessage>(currentMessageUrl)
     let fullContent = currentMessage?.content || ''
 
     const updatedSmsData = {
       ...smsData,
-      template: newTemplate
+      template: newTemplate,
+      messages: [newTemplate],
     }
 
     const smsJson = JSON.stringify(updatedSmsData)

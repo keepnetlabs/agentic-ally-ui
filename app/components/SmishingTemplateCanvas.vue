@@ -14,6 +14,7 @@ const emit = defineEmits<{
   save: [template: string]
 }>()
 
+const isSaving = ref(false)
 const localTemplate = ref(props.template || '')
 
 watch(
@@ -77,9 +78,19 @@ const insertTag = (tag: string) => {
   localTemplate.value = `${localTemplate.value || ''}${spacer}${tag}`
 }
 
-const onSave = () => {
-  if (isOverLimit.value || !hasPhishingUrlTag.value) return
-  emit('save', localTemplate.value)
+const toast = useToast()
+
+const onSave = async () => {
+  if (isOverLimit.value || !hasPhishingUrlTag.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    emit('save', localTemplate.value)
+    // Small delay so parent's async save has time to start
+    await new Promise(r => setTimeout(r, 300))
+    toast.add({ title: 'SMS template saved', icon: 'i-lucide-check-circle', color: 'success' })
+  } finally {
+    isSaving.value = false
+  }
 }
 </script>
 
@@ -130,16 +141,12 @@ const onSave = () => {
               size="sm"
               color="primary"
               class="rounded-full shadow-sm"
+              :loading="isSaving"
+              :disabled="isSaving"
               @click="onSave"
             >
-              Save
+              {{ isSaving ? 'Saving...' : 'Save' }}
             </UButton>
-            <UButton
-              size="sm"
-              variant="ghost"
-              icon="i-lucide-x"
-              @click="$emit('close')"
-            />
           </div>
         </div>
 

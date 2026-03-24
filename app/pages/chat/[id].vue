@@ -21,6 +21,8 @@ import { useUiSignalsSync } from '../../composables/useUiSignalsSync'
 import {
   extractTrainingUrlFromMessage,
   extractAllPhishingEmailsFromMessage,
+  extractSmishingSmsFromMessage,
+  extractSmishingLandingPageFromMessage,
   extractLandingPageFromMessage,
   extractAvatarSelectionFromMessage,
   extractVoiceSelectionFromMessage,
@@ -527,7 +529,7 @@ watch(
 
 const copied = ref(false)
 const canvasRef = ref()
-const openCanvasType = ref<'email' | 'landing-page' | null>(null)
+const openCanvasType = ref<'email' | 'landing-page' | 'smishing-sms' | null>(null)
 const { vishingUiByMessageId, processVishingStartedSignal, clearAllVishingPolling } = useVishingPolling({
   chatId,
   messages: () => messages.value,
@@ -574,7 +576,7 @@ const voiceSelectionByMessageId = computed(() => {
   return result
 })
 
-const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, checkAndTriggerCanvas, maybeProcessUiSignals, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
+const { openCanvasWithUrl, openCanvasWithEmail: originalOpenCanvasWithEmail, openCanvasWithLandingPage: originalOpenCanvasWithLandingPage, openCanvasWithSms: originalOpenCanvasWithSms, checkAndTriggerCanvas, maybeProcessUiSignals, handleDataEvent } = useCanvasTriggers(canvasRef, isCanvasVisible, toggleCanvas, wrappedHideCanvas, messages, route, chat, status)
 
 // Wrap canvas open functions to track canvas type
 const openCanvasWithEmail = (email: unknown, messageId: string) => {
@@ -585,6 +587,11 @@ const openCanvasWithEmail = (email: unknown, messageId: string) => {
 const openCanvasWithLandingPage = (landingPage: unknown, messageId: string) => {
   openCanvasType.value = 'landing-page'
   originalOpenCanvasWithLandingPage(landingPage, messageId)
+}
+
+const openCanvasWithSms = (sms: unknown, messageId: string) => {
+  openCanvasType.value = 'smishing-sms'
+  originalOpenCanvasWithSms(sms as { template: string; fromNumber?: string; fromName?: string } | string, messageId)
 }
 
 // Compute assistant config with conditional actions based on streaming state
@@ -827,6 +834,25 @@ function handleCanvasRefresh(messageId: string, newContent: string) {
                         @toggle="(email) => openCanvasType === 'email' ? wrappedHideCanvas() : openCanvasWithEmail(email, message.id)"
                       />
                     </template>
+
+                    <!-- Smishing SMS UI -->
+                    <template v-if="extractSmishingSmsFromMessage(message)">
+                      <SmishingSmsCard
+                        :sms="extractSmishingSmsFromMessage(message)"
+                        :is-canvas-visible="openCanvasType === 'smishing-sms'"
+                        @open="(sms) => openCanvasWithSms(sms, message.id)"
+                        @toggle="(sms) => openCanvasType === 'smishing-sms' ? wrappedHideCanvas() : openCanvasWithSms(sms, message.id)"
+                      />
+                    </template>
+
+                    <!-- Smishing Landing Page UI -->
+                    <LandingPageCard
+                      v-if="extractSmishingLandingPageFromMessage(message)"
+                      :landing-page="extractSmishingLandingPageFromMessage(message)"
+                      :is-canvas-visible="openCanvasType === 'landing-page'"
+                      @open="(landingPage) => openCanvasWithLandingPage(landingPage, message.id)"
+                      @toggle="(landingPage) => openCanvasType === 'landing-page' ? wrappedHideCanvas() : openCanvasWithLandingPage(landingPage, message.id)"
+                    />
 
                     <!-- Reasoning (shown above content, also during streaming) -->
                     <ReasoningSection :reasoning="message.reasoning" />

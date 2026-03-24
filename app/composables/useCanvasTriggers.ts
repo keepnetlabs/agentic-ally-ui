@@ -300,6 +300,7 @@ export const useCanvasTriggers = (
         openCanvasWithUrl,
         openCanvasWithEmail,
         openCanvasWithLandingPage,
+        openCanvasWithSms,
         checkAndTriggerCanvas,
         maybeProcessUiSignals,
         // MASTRA V1: New stream event handler
