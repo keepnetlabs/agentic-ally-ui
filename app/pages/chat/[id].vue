@@ -99,8 +99,7 @@ const saveMessageWithRetry = async (
       headers: apiHeaders.value
     })
 
-    // Success - silent success, no toast (only notify on errors)
-    console.log('AI message saved successfully')
+    // Success - silent, no toast (only notify on errors)
     if (!isComponentActive.value) {
       return false
     }
@@ -145,7 +144,6 @@ const saveMessageWithRetry = async (
     const delay = exponentialBackoffWithJitter(attempt)
 
     // Show retry progress (same ID so each retry updates the existing toast)
-    console.log(`Message save failed, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxRetries})`)
     toast.add({
       id: 'message-save-retry',
       title: 'Retrying...',
@@ -312,7 +310,6 @@ const chatClient = new Chat({
     // Silent retry: retry once automatically before showing error to user
     if (canRetry && streamSilentRetryCount.value < MAX_SILENT_RETRIES) {
       streamSilentRetryCount.value++
-      console.log(`[stream-retry] Silent retry ${streamSilentRetryCount.value}/${MAX_SILENT_RETRIES} in 1.5s...`)
       setTimeout(() => {
         if (!isComponentActive.value) return
         chatClient.regenerate()

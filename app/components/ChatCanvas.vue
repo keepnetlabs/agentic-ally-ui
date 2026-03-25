@@ -457,14 +457,11 @@ const handleEditorSave = async (newHtml: string) => {
     }
 
     const saveUrl = buildUrl('/api/phishing/editor/save')
-    console.log('Save phishing email URL:', saveUrl)
-    console.log('Save phishing landing URL (email save):', saveUrl)
-    const saveResponse = await secureFetch(saveUrl, {
+    await secureFetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payload
     })
-    console.log('Save phishing email response:', saveResponse)
   }
 
   // Save to backend if we have message and chat ID
@@ -506,12 +503,12 @@ const handleEditorSave = async (newHtml: string) => {
           content: fullContent
         }
       })
-      console.log('Template saved successfully')
-
       await savePhishingEdits()
 
       // Emit refresh event with updated content to update local state
       emit('refresh', messageId, fullContent)
+
+      toast.add({ title: 'Template saved', icon: 'i-lucide-check-circle', color: 'success' })
     } catch (error) {
       console.error('Failed to save template:', error)
       // Skip toast for 401 – useSecureApi already shows it

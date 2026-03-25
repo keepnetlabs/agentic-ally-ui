@@ -38,7 +38,6 @@ const TOOL_LABELS: Record<string, string> = {
   'generate-report-outline': 'Creating report outline',
   'expand-report-sections': 'Expanding report sections',
   'validate-and-store-report': 'Saving report',
-  'fetch-branding': 'Loading branding',
   'edit-report-section': 'Editing report section',
   'search-companies': 'Searching companies',
   'get-company-detail': 'Getting company details',

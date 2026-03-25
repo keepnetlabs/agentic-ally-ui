@@ -68,7 +68,6 @@ export function useDeepfakePolling(options: UseDeepfakePollingOptions) {
     const startedAt = pollingStartedAt.get(videoId) || Date.now()
     if (!pollingStartedAt.has(videoId)) pollingStartedAt.set(videoId, startedAt)
     if (Date.now() - startedAt >= pollTimeoutMs) {
-      console.warn('[deepfake-ui] poll timeout reached', { videoId, timeoutMs: pollTimeoutMs })
       setStatus(videoId, { videoId, status: 'failed', videoUrl: null, videoUrlCaption: null, thumbnailUrl: null, durationSec: null, errorMessage: 'Generation timed out after 20 minutes.' })
       stopPolling(videoId)
       return
@@ -79,7 +78,6 @@ export function useDeepfakePolling(options: UseDeepfakePollingOptions) {
       const statusUrlBase = buildUrl(`/api/deepfake/status/${encodeURIComponent(videoId)}`)
       const separator = statusUrlBase.includes('?') ? '&' : '?'
       const statusUrl = `${statusUrlBase}${separator}chatId=${encodeURIComponent(chatId)}`
-      console.log('[deepfake-ui] poll request', { videoId, statusUrl })
       const response = await secureFetch<{
         success: boolean
         videoId: string
@@ -90,13 +88,6 @@ export function useDeepfakePolling(options: UseDeepfakePollingOptions) {
         durationSec: number | null
         error?: string | null
       }>(statusUrl)
-
-      console.log('[deepfake-ui] poll response', {
-        videoId,
-        status: response.status,
-        hasVideoUrl: Boolean(response.videoUrl),
-        error: response.error
-      })
 
       setStatus(videoId, {
         videoId,
@@ -109,7 +100,6 @@ export function useDeepfakePolling(options: UseDeepfakePollingOptions) {
       })
 
       if (isTerminalStatus(response.status)) {
-        console.log('[deepfake-ui] terminal status reached, stopping poll', { videoId, status: response.status })
         stopPolling(videoId)
       }
     } catch (err: any) {
