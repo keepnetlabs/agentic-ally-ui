@@ -1,6 +1,11 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
+/** Fix broken protocol slashes: `https:/example.com` → `https://example.com` */
+function normalizeProtocolSlashes(url: string): string {
+  return url.replace(/^(https?:)\/{1}(?!\/)/i, '$1//')
+}
+
 export const useRouteParams = () => {
   const route = useRoute()
 
@@ -10,7 +15,7 @@ export const useRouteParams = () => {
   const baseApiUrl = computed(() => {
     const value = route.query.baseApiUrl as string
     if (value) {
-      return value
+      return normalizeProtocolSlashes(value)
     }
     if (process.client) {
       const hostname = window.location.hostname
